@@ -1,0 +1,82 @@
+Preciso criar um sistema completo para baixar, importar e buscar registros de marca do INPI (Instituto Nacional da Propriedade Industrial) do Brasil.
+
+## Fonte dos dados:
+- As revistas são distribuídas em formato ZIP no padrão:
+  https://revistas.inpi.gov.br/txt/RM0001.zip
+  https://revistas.inpi.gov.br/txt/RM0002.zip
+  ...
+  https://revistas.inpi.gov.br/txt/RM2887.zip
+- Numeração sequencial de 1 até 2887 (edição atual)
+- Cada ZIP contém arquivos XML com os registros de marca
+- São publicadas semanalmente
+- IMPORTANTE: As primeiras edições podem não existir ou ter formato diferente, o script deve tratar erros e pular edições que não existirem (404) sem parar o processo
+
+## O que o sistema precisa fazer:
+
+1. **Script de download (npm run download)**
+   - Baixar os ZIPs sequencialmente do 1 ao 2887
+   - Tentar URL com zero à esquerda: RM0001, RM0002... RM9999
+   - Extrair o XML de dentro do ZIP automaticamente
+   - Salvar os XMLs em uma pasta local /data/xmls
+   - Salvar na tabela revistas_controle quais edições já foram baixadas
+   - Se o download for interrompido, continuar de onde parou
+   - Log de progresso mostrando: edição atual / total, % concluído
+   - Aguardar 1 segundo entre cada download para não sobrecarregar o servidor do INPI
+
+2. **Banco de dados PostgreSQL**
+   - Criar migrations com as tabelas necessárias
+   - Tabela marcas com campos: id, numero_processo, nome_marca, titular, cnpj_cpf, classe_nice, status, data_deposito, data_concessao, tipo_marca, natureza, numero_revista, created_at, updated_at
+   - Tabela revistas_controle: numero_revista, baixado, importado, data_download, data_importacao, total_registros
+   - Índices otimizados para busca full-text no PostgreSQL (tsvector) nos campos nome_marca e titular
+   - Índice nos campos cnpj_cpf, numero_processo, classe_nice, status
+
+3. **Script de importação (npm run import)**
+   - Ler os XMLs da pasta /data/xmls que ainda não foram importados
+   - Fazer o parse do XML do INPI
+   - Importar os registros para o PostgreSQL com upsert
+   - Atualizar tabela revistas_controle marcando como importado
+   - Log de progresso com quantidade de registros importados por revista
+   - Tratar erros de XML malformado sem parar o processo
+
+4. **API REST em Node.js + Express**
+   - GET /marcas/buscar?nome=X → busca full-text por nome da marca
+   - GET /marcas/buscar?titular=X → busca por nome do titular
+   - GET /marcas/buscar?cnpj=X → busca por CNPJ/CPF do titular
+   - GET /marcas/buscar?processo=X → busca por número do processo
+   - GET /marcas/buscar?classe=X → busca por classe Nice
+   - GET /marcas/buscar?status=X → busca por status
+   - GET /marcas/:id → detalhes completos de uma marca
+   - GET /status → retorna quantas revistas baixadas, importadas e total de marcas
+   - Paginação em todos os endpoints (page, limit)
+   - Retorno em JSON
+   - CORS habilitado para o front-end Lovable
+
+5. **Cron job**
+   - Toda terça-feira verificar se há nova edição (número atual + 1)
+   - Se existir, baixar, extrair e importar automaticamente
+
+6. **Configuração**
+   - Arquivo .env com: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, API_PORT, DATA_PATH
+   - Arquivo .env.example como modelo
+   - package.json com scripts: migrate, download, import, start, dev
+   - Usar PM2 para manter a API rodando em produção
+
+## Stack:
+- Node.js + Express
+- PostgreSQL
+- fast-xml-parser para parse do XML
+- node-cron para agendamento
+- axios para download dos ZIPs
+- adm-zip para extrair os ZIPs
+- dotenv para variáveis de ambiente
+- cors para permitir acesso do front-end
+
+## Importante:
+- O sistema vai rodar em uma VPS Ubuntu 24.04 na Hostinger
+- A API será consumida por um front-end feito em Lovable (React)
+- Precisa suportar milhões de registros com boa performance
+- Comentários do código em português
+- O download de 2887 edições vai demorar horas, o script deve ser resistente a falhas e poder ser retomado
+- Ao final forneça o passo a passo completo para instalar e rodar na VPS via SSH incluindo: instalar Node.js, PostgreSQL, PM2, Nginx, configurar .env, rodar migrations, iniciar download e importação
+
+Crie toda a estrutura do projeto com todos os arquivos necessários.
