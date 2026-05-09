@@ -7,8 +7,12 @@ const AdmZip = require('adm-zip');
 const fs = require('fs');
 const path = require('path');
 const pool = require('../config/database');
-const marcasRouter = require('./routes/marcas');
-const statusRouter = require('./routes/status');
+const marcasRouter   = require('./routes/marcas');
+const statusRouter   = require('./routes/status');
+const statsRouter    = require('./routes/stats');
+const classesRouter  = require('./routes/classes');
+const titularesRouter = require('./routes/titulares');
+const procuradoresRouter = require('./routes/procuradores');
 
 const app = express();
 const PORT = parseInt(process.env.API_PORT) || 3000;
@@ -20,8 +24,12 @@ const DATA_PATH = process.env.DATA_PATH
 app.use(cors());
 app.use(express.json());
 
-app.use('/marcas', marcasRouter);
-app.use('/status', statusRouter);
+app.use('/marcas',    marcasRouter);
+app.use('/status',    statusRouter);
+app.use('/stats',     statsRouter);
+app.use('/classes',   classesRouter);
+app.use('/titulares', titularesRouter);
+app.use('/procuradores', procuradoresRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Rota não encontrada' });
