@@ -9,6 +9,7 @@ const DATA_PATH = process.env.DATA_PATH
   ? path.resolve(process.env.DATA_PATH)
   : path.join(__dirname, '../../data/xmls');
 
+const PRIMEIRA_REVISTA_XML = 2220; // antes disso era TXT ou PDF
 const TOTAL_REVISTAS = 2887;
 const BASE_URL = 'https://revistas.inpi.gov.br/txt';
 const DELAY_MS = 1000;
@@ -93,12 +94,13 @@ async function main() {
   const jaBaixadas = await getRevistasJaBaixadas();
   const pendentes = [];
 
-  for (let i = 1; i <= TOTAL_REVISTAS; i++) {
+  for (let i = PRIMEIRA_REVISTA_XML; i <= TOTAL_REVISTAS; i++) {
     if (!jaBaixadas.has(i)) pendentes.push(i);
   }
 
+  const totalXml = TOTAL_REVISTAS - PRIMEIRA_REVISTA_XML + 1;
   const totalJaBaixadas = jaBaixadas.size;
-  console.log(`Total de revistas: ${TOTAL_REVISTAS}`);
+  console.log(`Faixa XML: RM${PRIMEIRA_REVISTA_XML} a RM${TOTAL_REVISTAS} (${totalXml} revistas)`);
   console.log(`Já baixadas: ${totalJaBaixadas} | Pendentes: ${pendentes.length}`);
 
   if (pendentes.length === 0) {
