@@ -12,10 +12,7 @@ const parser = new XMLParser({
     ['processo', 'despacho', 'titular', 'classe-nice', 'classe-vienna', 'sobrestador'].includes(name),
   parseAttributeValue: false,
   trimValues: true,
-  processEntities: true,
-  htmlEntities: true,
-  stopNodes: [],
-  entityExpansionLimit: 10000,
+  processEntities: false,
 });
 
 function parseDate(dateStr) {
