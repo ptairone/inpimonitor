@@ -54,6 +54,7 @@ async function downloadRevista(numero) {
     responseType: 'arraybuffer',
     timeout: 120000,
     validateStatus: (status) => status < 500,
+    maxRedirects: 5,
   });
 
   if (response.status === 404) {
@@ -64,7 +65,13 @@ async function downloadRevista(numero) {
     throw new Error(`HTTP ${response.status}`);
   }
 
-  const zip = new AdmZip(Buffer.from(response.data));
+  // verifica se o conteúdo é realmente um ZIP (magic bytes PK = 0x50 0x4B)
+  const buf = Buffer.from(response.data);
+  if (buf.length < 4 || buf[0] !== 0x50 || buf[1] !== 0x4B) {
+    return null; // redirecionado para página de erro, trata como não encontrada
+  }
+
+  const zip = new AdmZip(buf);
   const entries = zip.getEntries().filter((e) => e.name.toLowerCase().endsWith('.xml'));
 
   if (entries.length === 0) {
