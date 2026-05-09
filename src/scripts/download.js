@@ -9,7 +9,7 @@ const DATA_PATH = process.env.DATA_PATH
   ? path.resolve(process.env.DATA_PATH)
   : path.join(__dirname, '../../data/xmls');
 
-const PRIMEIRA_REVISTA_XML = 2220; // antes disso era TXT ou PDF
+const PRIMEIRA_REVISTA = 1679; // antes disso era PDF, sem dados estruturados
 const TOTAL_REVISTAS = 2887;
 const BASE_URL = 'https://revistas.inpi.gov.br/txt';
 const DELAY_MS = 1000;
@@ -43,12 +43,15 @@ async function downloadRevista(numero) {
   const numStr = formatNumero(numero);
   const url = `${BASE_URL}/RM${numStr}.zip`;
   const xmlPath = path.join(DATA_PATH, `RM${numStr}.xml`);
+  const txtPath = path.join(DATA_PATH, `RM${numStr}.txt`);
 
-  // se o arquivo já existe localmente, apenas registra como baixado
   if (fs.existsSync(xmlPath)) {
     const xml = fs.readFileSync(xmlPath, 'utf8');
-    const count = (xml.match(/<processo /g) || []).length;
-    return count;
+    return (xml.match(/<processo /g) || []).length;
+  }
+  if (fs.existsSync(txtPath)) {
+    const txt = fs.readFileSync(txtPath, 'latin1');
+    return (txt.match(/^No\./gm) || []).length;
   }
 
   const response = await axios.get(url, {
@@ -58,13 +61,8 @@ async function downloadRevista(numero) {
     maxRedirects: 5,
   });
 
-  if (response.status === 404) {
-    return null;
-  }
-
-  if (response.status !== 200) {
-    throw new Error(`HTTP ${response.status}`);
-  }
+  if (response.status === 404) return null;
+  if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
 
   // verifica se o conteúdo é realmente um ZIP (magic bytes PK = 0x50 0x4B)
   const buf = Buffer.from(response.data);
@@ -73,17 +71,23 @@ async function downloadRevista(numero) {
   }
 
   const zip = new AdmZip(buf);
-  const entries = zip.getEntries().filter((e) => e.name.toLowerCase().endsWith('.xml'));
+  const entries = zip.getEntries();
 
-  if (entries.length === 0) {
-    throw new Error('Nenhum XML encontrado no ZIP');
+  const xmlEntry = entries.find((e) => e.name.toLowerCase().endsWith('.xml'));
+  if (xmlEntry) {
+    const xmlContent = xmlEntry.getData().toString('utf8');
+    fs.writeFileSync(xmlPath, xmlContent, 'utf8');
+    return (xmlContent.match(/<processo /g) || []).length;
   }
 
-  const xmlContent = entries[0].getData().toString('utf8');
-  fs.writeFileSync(xmlPath, xmlContent, 'utf8');
+  const txtEntry = entries.find((e) => e.name.toLowerCase().endsWith('.txt'));
+  if (txtEntry) {
+    const txtContent = txtEntry.getData().toString('latin1');
+    fs.writeFileSync(txtPath, txtContent, 'latin1');
+    return (txtContent.match(/^No\./gm) || []).length;
+  }
 
-  const count = (xmlContent.match(/<processo /g) || []).length;
-  return count;
+  throw new Error('Nenhum XML ou TXT encontrado no ZIP');
 }
 
 async function main() {
@@ -94,13 +98,13 @@ async function main() {
   const jaBaixadas = await getRevistasJaBaixadas();
   const pendentes = [];
 
-  for (let i = PRIMEIRA_REVISTA_XML; i <= TOTAL_REVISTAS; i++) {
+  for (let i = PRIMEIRA_REVISTA; i <= TOTAL_REVISTAS; i++) {
     if (!jaBaixadas.has(i)) pendentes.push(i);
   }
 
-  const totalXml = TOTAL_REVISTAS - PRIMEIRA_REVISTA_XML + 1;
+  const total = TOTAL_REVISTAS - PRIMEIRA_REVISTA + 1;
   const totalJaBaixadas = jaBaixadas.size;
-  console.log(`Faixa XML: RM${PRIMEIRA_REVISTA_XML} a RM${TOTAL_REVISTAS} (${totalXml} revistas)`);
+  console.log(`Faixa: RM${PRIMEIRA_REVISTA} a RM${TOTAL_REVISTAS} (${total} revistas | TXT: 1679-2219, XML: 2220-2887)`);
   console.log(`Já baixadas: ${totalJaBaixadas} | Pendentes: ${pendentes.length}`);
 
   if (pendentes.length === 0) {
