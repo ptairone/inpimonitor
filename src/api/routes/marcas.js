@@ -7,10 +7,21 @@ function parseInt10(val, def) {
   return isNaN(n) ? def : n;
 }
 
+function isValidDate(str) {
+  return str && /^\d{4}-\d{2}-\d{2}$/.test(str);
+}
+
 // GET /marcas/buscar
 router.get('/buscar', async (req, res) => {
   try {
-    const { nome, titular, cnpj, processo, classe, status } = req.query;
+    const {
+      nome, titular, processo, classe, status,
+      uf, pais, tipo, natureza, procurador, despacho_codigo,
+      deposito_de, deposito_ate,
+      concessao_de, concessao_ate,
+      vigencia_de, vigencia_ate,
+    } = req.query;
+
     const page = Math.max(1, parseInt10(req.query.page, 1));
     const limit = Math.min(100, Math.max(1, parseInt10(req.query.limit, 20)));
     const offset = (page - 1) * limit;
@@ -18,53 +29,50 @@ router.get('/buscar', async (req, res) => {
     const conditions = [];
     const params = [];
 
-    if (nome) {
-      params.push(nome);
-      // websearch_to_tsquery aceita texto livre sem precisar formatar operadores
-      conditions.push(`search_vector @@ websearch_to_tsquery('portuguese', $${params.length})`);
-    }
+    const add = (condition, value) => {
+      params.push(value);
+      conditions.push(condition.replace('?', `$${params.length}`));
+    };
 
-    if (titular) {
-      params.push(`%${titular}%`);
-      conditions.push(`titular ILIKE $${params.length}`);
-    }
+    if (nome)            add(`search_vector @@ websearch_to_tsquery('portuguese', ?)`, nome);
+    if (titular)         add(`titular ILIKE ?`, `%${titular}%`);
+    if (processo)        add(`numero_processo = ?`, processo.trim());
+    if (classe)          add(`? = ANY(classe_nice)`, classe.trim());
+    if (status)          add(`status ILIKE ?`, `%${status}%`);
+    if (uf)              add(`uf ILIKE ?`, uf.trim());
+    if (pais)            add(`pais ILIKE ?`, pais.trim());
+    if (tipo)            add(`tipo_marca ILIKE ?`, `%${tipo}%`);
+    if (natureza)        add(`natureza ILIKE ?`, `%${natureza}%`);
+    if (procurador)      add(`procurador ILIKE ?`, `%${procurador}%`);
+    if (despacho_codigo) add(`despacho_codigo = ?`, despacho_codigo.trim());
 
-    // cnpj não existe no XML do INPI mas mantemos o endpoint para compatibilidade
-    if (cnpj) {
-      return res.json({ data: [], total: 0, page, limit, paginas: 0 });
-    }
-
-    if (processo) {
-      params.push(processo.trim());
-      conditions.push(`numero_processo = $${params.length}`);
-    }
-
-    if (classe) {
-      params.push(classe.trim());
-      conditions.push(`$${params.length} = ANY(classe_nice)`);
-    }
-
-    if (status) {
-      params.push(`%${status}%`);
-      conditions.push(`status ILIKE $${params.length}`);
-    }
+    if (isValidDate(deposito_de))   add(`data_deposito >= ?`, deposito_de);
+    if (isValidDate(deposito_ate))  add(`data_deposito <= ?`, deposito_ate);
+    if (isValidDate(concessao_de))  add(`data_concessao >= ?`, concessao_de);
+    if (isValidDate(concessao_ate)) add(`data_concessao <= ?`, concessao_ate);
+    if (isValidDate(vigencia_de))   add(`data_vigencia >= ?`, vigencia_de);
+    if (isValidDate(vigencia_ate))  add(`data_vigencia <= ?`, vigencia_ate);
 
     if (conditions.length === 0) {
       return res.status(400).json({
-        error: 'Informe ao menos um parâmetro: nome, titular, processo, classe ou status',
+        error: 'Informe ao menos um parâmetro de busca',
+        parametros: [
+          'nome', 'titular', 'processo', 'classe', 'status',
+          'uf', 'pais', 'tipo', 'natureza', 'procurador', 'despacho_codigo',
+          'deposito_de', 'deposito_ate', 'concessao_de', 'concessao_ate',
+          'vigencia_de', 'vigencia_ate',
+        ],
       });
     }
 
     const whereClause = 'WHERE ' + conditions.join(' AND ');
 
-    // contagem total (sem limit/offset)
     const countResult = await pool.query(
       `SELECT COUNT(*) FROM marcas ${whereClause}`,
       params
     );
     const total = parseInt(countResult.rows[0].count, 10);
 
-    // ordenação: se buscou por nome usa relevância; senão usa data de concessão
     let orderBy;
     if (nome) {
       params.push(nome);
@@ -99,18 +107,33 @@ router.get('/buscar', async (req, res) => {
   }
 });
 
-// GET /marcas/:id
+// GET /marcas/processo/:numero — busca por número do processo com detalhes completos
+router.get('/processo/:numero', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM marcas WHERE numero_processo = $1',
+      [req.params.numero.trim()]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Processo não encontrado' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Erro em /marcas/processo/:numero:', err.message);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// GET /marcas/:id — busca por ID interno
 router.get('/:id', async (req, res) => {
   try {
     const id = parseInt10(req.params.id, 0);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     const result = await pool.query('SELECT * FROM marcas WHERE id = $1', [id]);
-
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Marca não encontrada' });
     }
-
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Erro em /marcas/:id:', err.message);
