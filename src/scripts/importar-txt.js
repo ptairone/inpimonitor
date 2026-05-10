@@ -123,7 +123,7 @@ async function upsertBatch(client, batch, numeroRevista) {
        data_deposito   = EXCLUDED.data_deposito,
        tipo_marca      = EXCLUDED.tipo_marca,
        natureza        = EXCLUDED.natureza,
-       procurador      = EXCLUDED.procurador,
+       procurador      = COALESCE(EXCLUDED.procurador, marcas.procurador),
        numero_revista  = EXCLUDED.numero_revista`,
     params
   );
