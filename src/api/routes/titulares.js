@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
+const { LIST_FIELDS, buildSort, parseInt10 } = require('../helpers');
 
-// GET /titulares/top?limit=20 — titulares com mais marcas
+// GET /titulares/top?limit=20&pais=BR&uf=SP
 router.get('/top', async (req, res) => {
   try {
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
-    const pais = req.query.pais;
-    const uf = req.query.uf;
+    const limit = Math.min(100, Math.max(1, parseInt10(req.query.limit, 20)));
+    const { pais, uf } = req.query;
 
     const conditions = ['titular IS NOT NULL'];
     const params = [];
@@ -19,11 +19,14 @@ router.get('/top', async (req, res) => {
     const whereClause = 'WHERE ' + conditions.join(' AND ');
 
     const result = await pool.query(
-      `SELECT titular, pais, uf, COUNT(*) AS total
+      `SELECT titular, pais, uf,
+              COUNT(*) AS total_marcas,
+              COUNT(*) FILTER (WHERE data_vigencia > CURRENT_DATE) AS marcas_vigentes,
+              MAX(data_concessao) AS ultima_concessao
        FROM marcas
        ${whereClause}
        GROUP BY titular, pais, uf
-       ORDER BY total DESC
+       ORDER BY total_marcas DESC
        LIMIT $${params.length}`,
       params
     );
@@ -34,14 +37,14 @@ router.get('/top', async (req, res) => {
   }
 });
 
-// GET /titulares/buscar?nome=X — buscar titular e ver suas marcas
+// GET /titulares/buscar?nome=X&pais=BR&uf=SP&sort_by=data_concessao&sort_order=desc
 router.get('/buscar', async (req, res) => {
   try {
-    const { nome, pais, uf } = req.query;
+    const { nome, pais, uf, sort_by, sort_order } = req.query;
     if (!nome) return res.status(400).json({ error: 'Informe o parâmetro nome' });
 
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const page  = Math.max(1, parseInt10(req.query.page, 1));
+    const limit = Math.min(100, Math.max(1, parseInt10(req.query.limit, 20)));
     const offset = (page - 1) * limit;
 
     const conditions = [`titular ILIKE $1`];
@@ -52,19 +55,17 @@ router.get('/buscar', async (req, res) => {
 
     const whereClause = 'WHERE ' + conditions.join(' AND ');
 
-    const countResult = await pool.query(
-      `SELECT COUNT(*) FROM marcas ${whereClause}`, params
-    );
+    const countResult = await pool.query(`SELECT COUNT(*) FROM marcas ${whereClause}`, params);
     const total = parseInt(countResult.rows[0].count, 10);
 
+    const orderBy = buildSort(sort_by, sort_order, 'data_concessao DESC NULLS LAST');
     params.push(limit, offset);
+
     const dataResult = await pool.query(
-      `SELECT id, numero_processo, nome_marca, titular, pais, uf,
-              classe_nice, status, data_deposito, data_concessao, data_vigencia,
-              tipo_marca, natureza, procurador, numero_revista
+      `SELECT ${LIST_FIELDS}
        FROM marcas
        ${whereClause}
-       ORDER BY data_concessao DESC NULLS LAST
+       ORDER BY ${orderBy}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );

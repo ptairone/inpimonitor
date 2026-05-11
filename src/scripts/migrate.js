@@ -4,14 +4,20 @@ const path = require('path');
 const pool = require('../config/database');
 
 async function migrate() {
-  const sqlPath = path.join(__dirname, '../migrations/001_create_tables.sql');
-  const sql = fs.readFileSync(sqlPath, 'utf8');
+  const migrationsDir = path.join(__dirname, '../migrations');
+  const files = fs.readdirSync(migrationsDir)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
 
   const client = await pool.connect();
   try {
-    console.log('Executando migrations...');
-    await client.query(sql);
-    console.log('Migrations executadas com sucesso.');
+    for (const file of files) {
+      const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+      console.log(`Executando ${file}...`);
+      await client.query(sql);
+      console.log(`  OK`);
+    }
+    console.log('Todas as migrations executadas com sucesso.');
   } finally {
     client.release();
     await pool.end();

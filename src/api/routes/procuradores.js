@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
+const { LIST_FIELDS, buildSort, parseInt10 } = require('../helpers');
 
-// GET /procuradores/top?limit=20
+// GET /procuradores/top?limit=20&uf=SP
 router.get('/top', async (req, res) => {
   try {
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
-    const uf = req.query.uf;
-    const pais = req.query.pais;
+    const limit = Math.min(100, Math.max(1, parseInt10(req.query.limit, 20)));
+    const { uf, pais } = req.query;
 
     const conditions = ['procurador IS NOT NULL', "procurador != ''"];
     const params = [];
@@ -19,11 +19,15 @@ router.get('/top', async (req, res) => {
     const whereClause = 'WHERE ' + conditions.join(' AND ');
 
     const result = await pool.query(
-      `SELECT procurador, COUNT(*) AS total
+      `SELECT procurador,
+              COUNT(*) AS total_marcas,
+              COUNT(*) FILTER (WHERE data_vigencia > CURRENT_DATE) AS marcas_vigentes,
+              COUNT(DISTINCT titular) AS total_titulares,
+              MAX(data_concessao) AS ultima_concessao
        FROM marcas
        ${whereClause}
        GROUP BY procurador
-       ORDER BY total DESC
+       ORDER BY total_marcas DESC
        LIMIT $${params.length}`,
       params
     );
@@ -34,14 +38,14 @@ router.get('/top', async (req, res) => {
   }
 });
 
-// GET /procuradores/buscar?nome=X
+// GET /procuradores/buscar?nome=X&uf=SP&sort_by=data_concessao
 router.get('/buscar', async (req, res) => {
   try {
-    const { nome, uf, pais } = req.query;
+    const { nome, uf, pais, sort_by, sort_order } = req.query;
     if (!nome) return res.status(400).json({ error: 'Informe o parâmetro nome' });
 
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const page  = Math.max(1, parseInt10(req.query.page, 1));
+    const limit = Math.min(100, Math.max(1, parseInt10(req.query.limit, 20)));
     const offset = (page - 1) * limit;
 
     const conditions = [`procurador ILIKE $1`];
@@ -52,19 +56,17 @@ router.get('/buscar', async (req, res) => {
 
     const whereClause = 'WHERE ' + conditions.join(' AND ');
 
-    const countResult = await pool.query(
-      `SELECT COUNT(*) FROM marcas ${whereClause}`, params
-    );
+    const countResult = await pool.query(`SELECT COUNT(*) FROM marcas ${whereClause}`, params);
     const total = parseInt(countResult.rows[0].count, 10);
 
+    const orderBy = buildSort(sort_by, sort_order, 'data_concessao DESC NULLS LAST');
     params.push(limit, offset);
+
     const dataResult = await pool.query(
-      `SELECT id, numero_processo, nome_marca, titular, pais, uf,
-              classe_nice, status, data_deposito, data_concessao, data_vigencia,
-              tipo_marca, natureza, procurador, numero_revista
+      `SELECT ${LIST_FIELDS}
        FROM marcas
        ${whereClause}
-       ORDER BY data_concessao DESC NULLS LAST
+       ORDER BY ${orderBy}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );

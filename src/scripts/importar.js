@@ -126,6 +126,31 @@ async function upsertBatch(client, batch) {
        numero_revista  = EXCLUDED.numero_revista`,
     params
   );
+
+  await upsertHistoricoBatch(client, batch);
+}
+
+async function upsertHistoricoBatch(client, batch) {
+  if (batch.length === 0) return;
+  const COLS = 4;
+  const placeholders = batch
+    .map((_, i) => {
+      const b = i * COLS;
+      return `($${b+1},$${b+2},$${b+3},$${b+4})`;
+    })
+    .join(',');
+
+  const params = [];
+  for (const r of batch) {
+    params.push(r.numero_processo, r.despacho_codigo, r.status, r.numero_revista);
+  }
+
+  await client.query(
+    `INSERT INTO historico_despachos (numero_processo, despacho_codigo, despacho_texto, numero_revista)
+     VALUES ${placeholders}
+     ON CONFLICT (numero_processo, numero_revista) DO NOTHING`,
+    params
+  );
 }
 
 async function importarRevista(xmlPath, numero) {

@@ -127,11 +127,39 @@ async function upsertBatch(client, batch, numeroRevista) {
        numero_revista  = EXCLUDED.numero_revista`,
     params
   );
+
+  await upsertHistoricoBatch(client, batch, numeroRevista);
+}
+
+async function upsertHistoricoBatch(client, batch, numeroRevista) {
+  if (batch.length === 0) return;
+  const COLS = 4;
+  const placeholders = batch
+    .map((_, i) => {
+      const b = i * COLS;
+      return `($${b+1},$${b+2},$${b+3},$${b+4})`;
+    })
+    .join(',');
+
+  const params = [];
+  for (const r of batch) {
+    params.push(r.numero_processo, r.despacho_codigo, r.status, numeroRevista);
+  }
+
+  await client.query(
+    `INSERT INTO historico_despachos (numero_processo, despacho_codigo, despacho_texto, numero_revista)
+     VALUES ${placeholders}
+     ON CONFLICT (numero_processo, numero_revista) DO NOTHING`,
+    params
+  );
 }
 
 async function importarRevistaTxt(txtPath, numero) {
   const content = fs.readFileSync(txtPath, 'latin1');
-  const registros = parseTxt(content).filter((r) => r.numero_processo);
+  const raw = parseTxt(content).filter((r) => r.numero_processo);
+  const map = new Map();
+  for (const r of raw) map.set(r.numero_processo, r);
+  const registros = Array.from(map.values());
 
   const client = await pool.connect();
   let importados = 0;
