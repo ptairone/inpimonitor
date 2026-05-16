@@ -7,12 +7,15 @@ const AdmZip = require('adm-zip');
 const fs = require('fs');
 const path = require('path');
 const pool = require('../config/database');
-const marcasRouter   = require('./routes/marcas');
-const statusRouter   = require('./routes/status');
-const statsRouter    = require('./routes/stats');
-const classesRouter  = require('./routes/classes');
-const titularesRouter = require('./routes/titulares');
+const { globalLimiter, searchLimiter } = require('./middleware/rateLimit');
+const { invalidatePrefix } = require('./middleware/cache');
+const marcasRouter       = require('./routes/marcas');
+const statusRouter       = require('./routes/status');
+const statsRouter        = require('./routes/stats');
+const classesRouter      = require('./routes/classes');
+const titularesRouter    = require('./routes/titulares');
 const procuradoresRouter = require('./routes/procuradores');
+const webhooksRouter     = require('./routes/webhooks');
 
 const app = express();
 const PORT = parseInt(process.env.API_PORT) || 3000;
@@ -23,16 +26,57 @@ const DATA_PATH = process.env.DATA_PATH
 
 app.use(cors());
 app.use(express.json());
+app.set('trust proxy', 1);
+app.use(globalLimiter);
 
-app.use('/marcas',    marcasRouter);
-app.use('/status',    statusRouter);
-app.use('/stats',     statsRouter);
-app.use('/classes',   classesRouter);
-app.use('/titulares', titularesRouter);
+app.use('/marcas',       marcasRouter);
+app.use('/status',       statusRouter);
+app.use('/stats',        statsRouter);
+app.use('/classes',      classesRouter);
+app.use('/titulares',    titularesRouter);
 app.use('/procuradores', procuradoresRouter);
+app.use('/webhooks',     webhooksRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Rota não encontrada' });
+});
+
+// Cron: diariamente às 08h envia notificações de vencimento via webhooks
+cron.schedule('0 8 * * *', async () => {
+  console.log('[WEBHOOK] Verificando vencimentos para notificações...');
+  try {
+    const hooks = await pool.query(
+      `SELECT id, url, min_dias FROM webhooks WHERE ativo = TRUE AND evento = 'vencimento'`
+    );
+    if (!hooks.rows.length) return;
+
+    for (const hook of hooks.rows) {
+      try {
+        const result = await pool.query(
+          `SELECT numero_processo, nome_marca, titular, data_vigencia, classe_nice, procurador
+           FROM marcas
+           WHERE data_vigencia = CURRENT_DATE + ($1 * INTERVAL '1 day')
+           ORDER BY nome_marca
+           LIMIT 500`,
+          [hook.min_dias]
+        );
+        if (!result.rows.length) continue;
+
+        await axios.post(hook.url, {
+          evento: 'vencimento',
+          min_dias: hook.min_dias,
+          total: result.rows.length,
+          data: result.rows,
+        }, { timeout: 15000 });
+
+        console.log(`[WEBHOOK] ${hook.url} — ${result.rows.length} marcas vencendo em ${hook.min_dias} dias.`);
+      } catch (err) {
+        console.error(`[WEBHOOK] Falha ao notificar ${hook.url}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[WEBHOOK] Erro geral:', err.message);
+  }
 });
 
 // Cron: toda terça-feira às 10h verifica nova edição
@@ -92,6 +136,10 @@ cron.schedule('0 10 * * 2', async () => {
     const { importarRevista } = require('../scripts/importar');
     const importados = await importarRevista(xmlPath, proxima);
     console.log(`[CRON] RM${numStr} importada: ${importados} registros.`);
+    invalidatePrefix('/stats');
+    invalidatePrefix('/classes');
+    invalidatePrefix('/titulares');
+    invalidatePrefix('/procuradores');
   } catch (err) {
     console.error('[CRON] Erro:', err.message);
   }

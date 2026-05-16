@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
 const { LIST_FIELDS, buildSort, parseInt10 } = require('../helpers');
+const { cacheMiddleware } = require('../middleware/cache');
 
 // GET /classes — lista todas as classes Nice com contagens detalhadas
-router.get('/', async (req, res) => {
+router.get('/', cacheMiddleware(600), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT

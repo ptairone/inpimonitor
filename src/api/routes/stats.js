@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
 const { parseInt10 } = require('../helpers');
+const { cacheMiddleware } = require('../middleware/cache');
 
 // GET /stats/resumo — visão geral do banco
-router.get('/resumo', async (req, res) => {
+router.get('/resumo', cacheMiddleware(300), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -31,7 +32,7 @@ router.get('/resumo', async (req, res) => {
 });
 
 // GET /stats/vencendo-por-mes?meses=24 — distribuição de vencimentos futuros
-router.get('/vencendo-por-mes', async (req, res) => {
+router.get('/vencendo-por-mes', cacheMiddleware(300), async (req, res) => {
   try {
     const meses = Math.min(120, Math.max(1, parseInt10(req.query.meses, 24)));
     const result = await pool.query(
@@ -55,7 +56,7 @@ router.get('/vencendo-por-mes', async (req, res) => {
 });
 
 // GET /stats/por-uf
-router.get('/por-uf', async (req, res) => {
+router.get('/por-uf', cacheMiddleware(300), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -75,7 +76,7 @@ router.get('/por-uf', async (req, res) => {
 });
 
 // GET /stats/por-pais
-router.get('/por-pais', async (req, res) => {
+router.get('/por-pais', cacheMiddleware(300), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -95,7 +96,7 @@ router.get('/por-pais', async (req, res) => {
 });
 
 // GET /stats/por-classe
-router.get('/por-classe', async (req, res) => {
+router.get('/por-classe', cacheMiddleware(300), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -115,7 +116,7 @@ router.get('/por-classe', async (req, res) => {
 });
 
 // GET /stats/por-status
-router.get('/por-status', async (req, res) => {
+router.get('/por-status', cacheMiddleware(300), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -138,7 +139,7 @@ router.get('/por-status', async (req, res) => {
 });
 
 // GET /stats/por-tipo
-router.get('/por-tipo', async (req, res) => {
+router.get('/por-tipo', cacheMiddleware(300), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -158,7 +159,7 @@ router.get('/por-tipo', async (req, res) => {
 });
 
 // GET /stats/por-natureza
-router.get('/por-natureza', async (req, res) => {
+router.get('/por-natureza', cacheMiddleware(300), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -178,7 +179,7 @@ router.get('/por-natureza', async (req, res) => {
 });
 
 // GET /stats/por-ano — marcas depositadas por ano com breakdown
-router.get('/por-ano', async (req, res) => {
+router.get('/por-ano', cacheMiddleware(600), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT

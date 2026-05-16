@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
 const { LIST_FIELDS, DETAIL_FIELDS, buildSort, parseClasses, parseInt10, isValidDate, toCsv } = require('../helpers');
+const { searchLimiter } = require('../middleware/rateLimit');
 
 function sendList(req, res, rows, meta) {
   if (req.query.formato === 'csv') {
@@ -13,10 +14,10 @@ function sendList(req, res, rows, meta) {
 }
 
 // GET /marcas/buscar
-router.get('/buscar', async (req, res) => {
+router.get('/buscar', searchLimiter, async (req, res) => {
   try {
     const {
-      nome, titular, processo, status,
+      nome, fuzzy, titular, processo, status,
       uf, pais, tipo, natureza, procurador, despacho_codigo,
       deposito_de, deposito_ate,
       concessao_de, concessao_ate,
@@ -24,6 +25,7 @@ router.get('/buscar', async (req, res) => {
       sort_by, sort_order, sem_contagem, vigente,
     } = req.query;
 
+    const isFuzzy = fuzzy === 'true' && !!nome;
     const classes = parseClasses(req.query.classe);
     const page  = Math.max(1, parseInt10(req.query.page, 1));
     const limit = Math.min(100, Math.max(1, parseInt10(req.query.limit, 20)));
@@ -31,13 +33,19 @@ router.get('/buscar', async (req, res) => {
 
     const conditions = [];
     const params = [];
+    let fuzzyNomeIdx = null;
 
     const add = (condition, value) => {
       params.push(value);
       conditions.push(condition.replace('?', `$${params.length}`));
     };
 
-    if (nome)            add(`search_vector @@ websearch_to_tsquery('portuguese', ?)`, nome);
+    if (nome && !isFuzzy) add(`search_vector @@ websearch_to_tsquery('portuguese', ?)`, nome);
+    if (isFuzzy) {
+      params.push(nome);
+      fuzzyNomeIdx = params.length;
+      conditions.push(`similarity(nome_marca, $${fuzzyNomeIdx}) > 0.2`);
+    }
     if (titular)         add(`titular ILIKE ?`, `%${titular}%`);
     if (processo)        add(`numero_processo = ?`, processo.trim());
     if (status)          add(`status ILIKE ?`, `%${status}%`);
@@ -95,7 +103,9 @@ router.get('/buscar', async (req, res) => {
     }
 
     let orderBy;
-    if (nome && !sort_by) {
+    if (isFuzzy && !sort_by) {
+      orderBy = `similarity(nome_marca, $${fuzzyNomeIdx}) DESC`;
+    } else if (nome && !sort_by && !isFuzzy) {
       params.push(nome);
       orderBy = `ts_rank(search_vector, websearch_to_tsquery('portuguese', $${params.length})) DESC`;
     } else {
