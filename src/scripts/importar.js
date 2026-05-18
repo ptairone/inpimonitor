@@ -59,7 +59,9 @@ function extrairProcesso(proc, numeroRevista) {
   const uf = extrairTexto(titulares[0]?.['@_uf']);
 
   const marca = proc.marca && typeof proc.marca === 'object' ? proc.marca : {};
-  const nomeMarca = extrairTexto(marca.nome);
+  // formato antigo: <marca apresentacao="X">NOME</marca> → #text
+  // formato novo:   <marca apresentacao="X"><nome>NOME</nome></marca> → .nome
+  const nomeMarca = extrairTexto(marca.nome) || extrairTexto(marca['#text']);
   const tipoMarca = extrairTexto(marca['@_apresentacao']);
   const natureza = extrairTexto(marca['@_natureza']);
 
@@ -123,9 +125,9 @@ async function upsertBatch(client, batch) {
        classe_nice     = EXCLUDED.classe_nice,
        status          = EXCLUDED.status,
        despacho_codigo = EXCLUDED.despacho_codigo,
-       data_deposito   = EXCLUDED.data_deposito,
-       data_concessao  = EXCLUDED.data_concessao,
-       data_vigencia   = EXCLUDED.data_vigencia,
+       data_deposito   = COALESCE(EXCLUDED.data_deposito, marcas.data_deposito),
+       data_concessao  = COALESCE(EXCLUDED.data_concessao, marcas.data_concessao),
+       data_vigencia   = COALESCE(EXCLUDED.data_vigencia, marcas.data_vigencia),
        tipo_marca      = EXCLUDED.tipo_marca,
        natureza        = EXCLUDED.natureza,
        procurador      = COALESCE(EXCLUDED.procurador, marcas.procurador),
