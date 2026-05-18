@@ -124,7 +124,8 @@ async function upsertBatch(client, batch, numeroRevista) {
        tipo_marca      = EXCLUDED.tipo_marca,
        natureza        = EXCLUDED.natureza,
        procurador      = COALESCE(EXCLUDED.procurador, marcas.procurador),
-       numero_revista  = EXCLUDED.numero_revista`,
+       numero_revista  = EXCLUDED.numero_revista
+     WHERE EXCLUDED.numero_revista >= marcas.numero_revista`,
     params
   );
 
@@ -149,7 +150,7 @@ async function upsertHistoricoBatch(client, batch, numeroRevista) {
   await client.query(
     `INSERT INTO historico_despachos (numero_processo, despacho_codigo, despacho_texto, numero_revista)
      VALUES ${placeholders}
-     ON CONFLICT (numero_processo, numero_revista) DO NOTHING`,
+     ON CONFLICT (numero_processo, numero_revista, (COALESCE(despacho_codigo, ''))) DO NOTHING`,
     params
   );
 }

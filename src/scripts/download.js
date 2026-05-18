@@ -10,7 +10,6 @@ const DATA_PATH = process.env.DATA_PATH
   : path.join(__dirname, '../../data/xmls');
 
 const PRIMEIRA_REVISTA = 1679; // antes disso era PDF, sem dados estruturados
-const TOTAL_REVISTAS = 2887;
 const BASE_URL = 'https://revistas.inpi.gov.br/txt';
 const DELAY_MS = 1000;
 
@@ -27,6 +26,30 @@ async function getRevistasJaBaixadas() {
     'SELECT numero_revista FROM revistas_controle WHERE baixado = TRUE'
   );
   return new Set(result.rows.map((r) => r.numero_revista));
+}
+
+async function detectarUltimaRevista(ultimaConhecida) {
+  let ultima = ultimaConhecida;
+  // Sonda até 20 revistas à frente para encontrar as mais recentes
+  for (let n = ultimaConhecida + 1; n <= ultimaConhecida + 20; n++) {
+    const url = `${BASE_URL}/RM${formatNumero(n)}.zip`;
+    try {
+      const resp = await axios.head(url, {
+        timeout: 10000,
+        validateStatus: (s) => s < 500,
+        maxRedirects: 3,
+      });
+      if (resp.status === 200) {
+        ultima = n;
+      } else {
+        break;
+      }
+    } catch {
+      break;
+    }
+    await sleep(300);
+  }
+  return ultima;
 }
 
 async function marcarBaixada(numero, totalRegistros) {
@@ -96,15 +119,24 @@ async function main() {
   }
 
   const jaBaixadas = await getRevistasJaBaixadas();
-  const pendentes = [];
 
+  const res = await pool.query(
+    'SELECT COALESCE(MAX(numero_revista), $1) AS ultima FROM revistas_controle WHERE baixado = TRUE',
+    [PRIMEIRA_REVISTA - 1]
+  );
+  const ultimaConhecida = Number(res.rows[0].ultima);
+  process.stdout.write(`Verificando revistas novas a partir da RM${formatNumero(ultimaConhecida + 1)}... `);
+  const TOTAL_REVISTAS = await detectarUltimaRevista(ultimaConhecida);
+  console.log(`última disponível: RM${formatNumero(TOTAL_REVISTAS)}`);
+
+  const pendentes = [];
   for (let i = PRIMEIRA_REVISTA; i <= TOTAL_REVISTAS; i++) {
     if (!jaBaixadas.has(i)) pendentes.push(i);
   }
 
   const total = TOTAL_REVISTAS - PRIMEIRA_REVISTA + 1;
   const totalJaBaixadas = jaBaixadas.size;
-  console.log(`Faixa: RM${PRIMEIRA_REVISTA} a RM${TOTAL_REVISTAS} (${total} revistas | TXT: 1679-2219, XML: 2220-2887)`);
+  console.log(`Faixa: RM${PRIMEIRA_REVISTA} a RM${TOTAL_REVISTAS} (${total} revistas | TXT: 1679-2219, XML: 2220+)`);
   console.log(`Já baixadas: ${totalJaBaixadas} | Pendentes: ${pendentes.length}`);
 
   if (pendentes.length === 0) {
