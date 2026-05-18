@@ -113,19 +113,18 @@ async function upsertBatch(client, batch, numeroRevista) {
        tipo_marca, natureza, procurador, numero_revista
      ) VALUES ${placeholders}
      ON CONFLICT (numero_processo) DO UPDATE SET
-       nome_marca      = EXCLUDED.nome_marca,
-       titular         = EXCLUDED.titular,
-       pais            = EXCLUDED.pais,
-       uf              = EXCLUDED.uf,
-       classe_nice     = EXCLUDED.classe_nice,
-       status          = EXCLUDED.status,
-       despacho_codigo = EXCLUDED.despacho_codigo,
-       data_deposito   = COALESCE(EXCLUDED.data_deposito, marcas.data_deposito),
-       tipo_marca      = EXCLUDED.tipo_marca,
-       natureza        = EXCLUDED.natureza,
-       procurador      = COALESCE(EXCLUDED.procurador, marcas.procurador),
-       numero_revista  = EXCLUDED.numero_revista
-     WHERE EXCLUDED.numero_revista >= marcas.numero_revista`,
+       titular         = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.titular         ELSE marcas.titular END,
+       pais            = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.pais            ELSE marcas.pais END,
+       uf              = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.uf              ELSE marcas.uf END,
+       classe_nice     = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.classe_nice     ELSE marcas.classe_nice END,
+       status          = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.status          ELSE marcas.status END,
+       despacho_codigo = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.despacho_codigo ELSE marcas.despacho_codigo END,
+       procurador      = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.procurador, marcas.procurador) ELSE marcas.procurador END,
+       numero_revista  = GREATEST(marcas.numero_revista, EXCLUDED.numero_revista),
+       nome_marca      = COALESCE(marcas.nome_marca,   EXCLUDED.nome_marca),
+       tipo_marca      = COALESCE(marcas.tipo_marca,   EXCLUDED.tipo_marca),
+       natureza        = COALESCE(marcas.natureza,     EXCLUDED.natureza),
+       data_deposito   = COALESCE(marcas.data_deposito, EXCLUDED.data_deposito)`,
     params
   );
 
