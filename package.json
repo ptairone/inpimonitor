@@ -8,6 +8,7 @@
     "download": "node src/scripts/download.js",
     "import": "node src/scripts/import.js",
     "import:txt": "node src/scripts/import-txt.js",
+    "sync": "node src/scripts/sync.js",
     "start": "node src/api/server.js",
     "dev": "nodemon src/api/server.js"
   },
