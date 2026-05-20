@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
 const { LIST_FIELDS, DETAIL_FIELDS, buildSort, parseClasses, parseInt10, isValidDate, toCsv } = require('../helpers');
+const { fetchImagem } = require('../../scripts/imagens');
 const { searchLimiter } = require('../middleware/rateLimit');
 
 function sendList(req, res, rows, meta) {
@@ -253,6 +254,22 @@ router.get('/:id', async (req, res) => {
   } catch (err) {
     console.error('Erro em /marcas/:id:', err.message);
     res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// GET /marcas/:processo/imagem — retorna a imagem da marca (cache local, busca no INPI se necessário)
+router.get('/:processo/imagem', async (req, res) => {
+  const { processo } = req.params;
+  if (!/^\d+$/.test(processo)) return res.status(400).json({ error: 'Número de processo inválido' });
+
+  try {
+    const imgPath = await fetchImagem(processo);
+    if (!imgPath) return res.status(404).json({ error: 'Imagem não disponível para este processo' });
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(imgPath);
+  } catch (err) {
+    console.error('Erro em /marcas/:processo/imagem:', err.message);
+    res.status(500).json({ error: 'Erro ao buscar imagem' });
   }
 });
 
