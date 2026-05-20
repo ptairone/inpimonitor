@@ -39,6 +39,8 @@ router.get('/top', async (req, res) => {
 });
 
 // GET /procuradores/buscar?nome=X&uf=SP&sort_by=data_concessao
+// Retorna todos os processos onde o procurador já apareceu (histórico completo),
+// não apenas os que ele representa atualmente
 router.get('/buscar', async (req, res) => {
   try {
     const { nome, uf, pais, sort_by, sort_order } = req.query;
@@ -48,8 +50,14 @@ router.get('/buscar', async (req, res) => {
     const limit = Math.min(100, Math.max(1, parseInt10(req.query.limit, 20)));
     const offset = (page - 1) * limit;
 
-    const conditions = [`procurador ILIKE $1`];
     const params = [`%${nome}%`];
+    const conditions = [
+      `numero_processo IN (
+        SELECT DISTINCT numero_processo FROM historico_despachos WHERE procurador ILIKE $1
+        UNION
+        SELECT numero_processo FROM marcas WHERE procurador ILIKE $1
+      )`,
+    ];
 
     if (uf)   { params.push(uf);   conditions.push(`uf ILIKE $${params.length}`); }
     if (pais) { params.push(pais); conditions.push(`pais ILIKE $${params.length}`); }

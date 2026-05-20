@@ -149,24 +149,25 @@ async function upsertHistoricoBatch(client, batch) {
       ? r.todos_despachos
       : [{ codigo: r.despacho_codigo || '', texto: r.status }];
     for (const d of despachos) {
-      registros.push({ numero_processo: r.numero_processo, codigo: d.codigo || '', texto: d.texto, revista: r.numero_revista });
+      registros.push({ numero_processo: r.numero_processo, codigo: d.codigo || '', texto: d.texto, revista: r.numero_revista, procurador: r.procurador });
     }
   }
 
-  const COLS = 4;
+  const COLS = 5;
   const placeholders = registros
-    .map((_, i) => { const b = i * COLS; return `($${b+1},$${b+2},$${b+3},$${b+4})`; })
+    .map((_, i) => { const b = i * COLS; return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5})`; })
     .join(',');
 
   const params = [];
   for (const r of registros) {
-    params.push(r.numero_processo, r.codigo, r.texto, r.revista);
+    params.push(r.numero_processo, r.codigo, r.texto, r.revista, r.procurador);
   }
 
   await client.query(
-    `INSERT INTO historico_despachos (numero_processo, despacho_codigo, despacho_texto, numero_revista)
+    `INSERT INTO historico_despachos (numero_processo, despacho_codigo, despacho_texto, numero_revista, procurador)
      VALUES ${placeholders}
-     ON CONFLICT (numero_processo, numero_revista, (COALESCE(despacho_codigo, ''))) DO NOTHING`,
+     ON CONFLICT (numero_processo, numero_revista, (COALESCE(despacho_codigo, '')))
+     DO UPDATE SET procurador = COALESCE(historico_despachos.procurador, EXCLUDED.procurador)`,
     params
   );
 }

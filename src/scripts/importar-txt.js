@@ -133,23 +133,24 @@ async function upsertBatch(client, batch, numeroRevista) {
 
 async function upsertHistoricoBatch(client, batch, numeroRevista) {
   if (batch.length === 0) return;
-  const COLS = 4;
+  const COLS = 5;
   const placeholders = batch
     .map((_, i) => {
       const b = i * COLS;
-      return `($${b+1},$${b+2},$${b+3},$${b+4})`;
+      return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5})`;
     })
     .join(',');
 
   const params = [];
   for (const r of batch) {
-    params.push(r.numero_processo, r.despacho_codigo, r.status, numeroRevista);
+    params.push(r.numero_processo, r.despacho_codigo, r.status, numeroRevista, r.procurador);
   }
 
   await client.query(
-    `INSERT INTO historico_despachos (numero_processo, despacho_codigo, despacho_texto, numero_revista)
+    `INSERT INTO historico_despachos (numero_processo, despacho_codigo, despacho_texto, numero_revista, procurador)
      VALUES ${placeholders}
-     ON CONFLICT (numero_processo, numero_revista, (COALESCE(despacho_codigo, ''))) DO NOTHING`,
+     ON CONFLICT (numero_processo, numero_revista, (COALESCE(despacho_codigo, '')))
+     DO UPDATE SET procurador = COALESCE(historico_despachos.procurador, EXCLUDED.procurador)`,
     params
   );
 }
