@@ -115,21 +115,25 @@ async function baixarImagem(cookies, codPedido) {
 }
 
 function parsePeticoes(html) {
-  // Cada petição é uma <tr> que contém um protocolo numérico de 12+ dígitos
+  // Remove tooltips (divs ocultos) antes de parsear para não sujar células
+  const limpo = html.replace(/<div\b[^>]*VISIBILITY:\s*hidden[\s\S]*?<\/div>/gi, '');
+
+  // Colunas: 0=Pgo, 1=Protocolo, 2=Data, 3=Img, 4=spacer, 5=Serviço, 6=Cliente, 7=ícone, 8=DataDelivery
   const peticoes = [];
-  const rows = html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
+  const rows = limpo.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
   for (const row of rows) {
     const cells = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)]
-      .map(c => c[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, '').trim());
-    // Célula 1 = protocolo (12+ dígitos), célula 2 = data
-    if (cells.length < 3 || !/^\d{12,}$/.test(cells[1])) continue;
+      .map(c => c[1].replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim());
+    if (cells.length < 7 || !/^\d{12,}$/.test(cells[1])) continue;
+    const img = cells[3] === '-' ? null : (cells[3] || null);
+    const delivery = parseDataBR(cells[8]) || parseDataBR(cells[7]);
     peticoes.push({
       protocolo:     cells[1],
       data_peticao:  parseDataBR(cells[2]),
-      numero_img:    cells[3] === '-' ? null : cells[3] || null,
-      servico:       cells[4] || null,
-      cliente:       cells[5] || null,
-      data_delivery: parseDataBR(cells[6]),
+      numero_img:    img,
+      servico:       cells[5] || null,
+      cliente:       cells[6] || null,
+      data_delivery: delivery,
     });
   }
   return peticoes;
