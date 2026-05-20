@@ -161,34 +161,31 @@ async function fetchImagem(numeroProcesso) {
 
   const imgPath = path.join(IMG_DIR, `${numeroProcesso}.jpg`);
 
-  // Buscar codPedido (do banco ou via INPI)
-  let codPedido;
-  const row = await pool.query(
-    'SELECT inpi_cod_pedido FROM marcas WHERE numero_processo = $1', [numeroProcesso]
-  );
-  codPedido = row.rows[0]?.inpi_cod_pedido;
+  // O pePI é stateful: a sessão exige que a busca seja feita antes do detalhe
+  let cookies = await login();
+  const { codPedido, cookies: c2 } = await buscarCodPedido(cookies, numeroProcesso);
+  cookies = c2;
+  if (!codPedido) return null;
 
-  const cookies = await login();
+  // Salvar codPedido no banco para referência futura
+  await pool.query(
+    'UPDATE marcas SET inpi_cod_pedido = $1 WHERE numero_processo = $2',
+    [codPedido, numeroProcesso]
+  ).catch(() => {});
 
-  if (!codPedido) {
-    const result = await buscarCodPedido(cookies, numeroProcesso);
-    codPedido = result.codPedido;
-    if (!codPedido) return null;
-    await pool.query(
-      'UPDATE marcas SET inpi_cod_pedido = $1 WHERE numero_processo = $2',
-      [codPedido, numeroProcesso]
-    ).catch(() => {});
-  }
-
-  // Buscar petições junto (aproveita a mesma sessão)
-  const { html } = await acessarDetalhe(cookies, codPedido);
+  // Acessar detalhe (com sessão preparada pela busca) e extrair petições
+  const { html, cookies: c3 } = await acessarDetalhe(cookies, codPedido);
+  cookies = c3;
   const peticoes = parsePeticoes(html);
   await salvarPeticoes(numeroProcesso, peticoes);
 
   // Imagem (usa cache se existir)
   if (!fs.existsSync(imgPath)) {
-    const imgBuf = await baixarImagem(cookies, codPedido);
-    if (imgBuf) fs.writeFileSync(imgPath, imgBuf);
+    const r = await req(`${BASE}/servlet/LogoMarcasServletController?Action=image&codProcesso=${codPedido}`, {
+      headers: { Cookie: cookieHeader(cookies) },
+    });
+    const ct = r.headers['content-type'] || '';
+    if (ct.includes('image')) fs.writeFileSync(imgPath, r.body);
     else return null;
   }
 
