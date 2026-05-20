@@ -115,20 +115,18 @@ async function baixarImagem(cookies, codPedido) {
 }
 
 function parsePeticoes(html) {
-  // Extrai linhas da tabela de petições do HTML do pePI
+  // Cada petição é uma <tr> que contém um protocolo numérico de 12+ dígitos
   const peticoes = [];
-  const tableMatch = html.match(/Peti[çc][oõ]es[\s\S]*?<table[^>]*>([\s\S]*?)<\/table>/i);
-  if (!tableMatch) return peticoes;
-
-  const rows = tableMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
+  const rows = html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
   for (const row of rows) {
     const cells = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)]
       .map(c => c[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, '').trim());
-    if (cells.length < 4 || !cells[1] || !/^\d{12,}$/.test(cells[1])) continue;
+    // Célula 1 = protocolo (12+ dígitos), célula 2 = data
+    if (cells.length < 3 || !/^\d{12,}$/.test(cells[1])) continue;
     peticoes.push({
-      protocolo:     cells[1] || null,
+      protocolo:     cells[1],
       data_peticao:  parseDataBR(cells[2]),
-      numero_img:    cells[3] || null,
+      numero_img:    cells[3] === '-' ? null : cells[3] || null,
       servico:       cells[4] || null,
       cliente:       cells[5] || null,
       data_delivery: parseDataBR(cells[6]),
