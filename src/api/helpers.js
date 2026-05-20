@@ -37,6 +37,7 @@ const DETAIL_FIELDS = `
     LEFT JOIN classe_nice_descricoes cd ON cd.classe = u.cls
     ORDER BY u.idx
   ) END AS classe_descricoes,
+  especificacao_nice, classe_vienna,
   status, despacho_codigo,
   (SELECT descricao FROM despacho_codigos WHERE codigo = despacho_codigo) AS despacho_descricao,
   (SELECT categoria FROM despacho_codigos WHERE codigo = despacho_codigo) AS despacho_categoria,

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
 const { LIST_FIELDS, DETAIL_FIELDS, buildSort, parseClasses, parseInt10, isValidDate, toCsv } = require('../helpers');
-const { fetchImagem } = require('../../scripts/imagens');
+const { fetchImagem, fetchPeticoes } = require('../../scripts/imagens');
 const { searchLimiter } = require('../middleware/rateLimit');
 
 function sendList(req, res, rows, meta) {
@@ -250,7 +250,26 @@ router.get('/:id', async (req, res) => {
     if (marcaResult.rows.length === 0) {
       return res.status(404).json({ error: 'Marca não encontrada' });
     }
-    res.json({ ...marcaResult.rows[0], historico: historicoResult.rows });
+
+    const marca = marcaResult.rows[0];
+
+    // Petições: retorna do banco (busca no INPI em background se ainda não tiver)
+    const peticoesResult = await pool.query(
+      'SELECT protocolo, data_peticao, servico, cliente, numero_img, data_delivery FROM peticoes WHERE numero_processo = $1 ORDER BY data_peticao ASC',
+      [marca.numero_processo]
+    );
+
+    // Se não tiver petições ainda, dispara busca em background (não bloqueia a resposta)
+    if (peticoesResult.rows.length === 0) {
+      fetchPeticoes(marca.numero_processo).catch(() => {});
+    }
+
+    res.json({
+      ...marca,
+      historico: historicoResult.rows,
+      peticoes: peticoesResult.rows,
+      tem_imagem: marca.tipo_marca === 'Mista' || marca.tipo_marca === 'Figurativa' || marca.tipo_marca === 'Tridimensional',
+    });
   } catch (err) {
     console.error('Erro em /marcas/:id:', err.message);
     res.status(500).json({ error: 'Erro interno do servidor' });

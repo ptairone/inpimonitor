@@ -68,6 +68,18 @@ function extrairProcesso(proc, numeroRevista) {
   const listaClasse = proc['lista-classe-nice']?.['classe-nice'] || [];
   const classeNice = listaClasse.map((c) => extrairTexto(c['@_codigo'])).filter(Boolean);
 
+  // Especificação por classe Nice: { "43": "Aluguel de acomodações..." }
+  const especificacaoNice = {};
+  for (const c of listaClasse) {
+    const cod = extrairTexto(c['@_codigo']);
+    const esp = extrairTexto(c.especificacao);
+    if (cod && esp) especificacaoNice[cod] = esp.replace(/;\s*$/, '').trim();
+  }
+
+  // Classificação de Viena: ["7.1.8", "29.1.15", ...]
+  const listaViena = proc['classes-vienna']?.['classe-vienna'] || [];
+  const classeViena = listaViena.map((v) => extrairTexto(v['@_codigo'])).filter(Boolean);
+
   const procurador = extrairTexto(proc.procurador);
 
   return {
@@ -77,6 +89,8 @@ function extrairProcesso(proc, numeroRevista) {
     pais,
     uf,
     classe_nice: classeNice,
+    especificacao_nice: Object.keys(especificacaoNice).length ? especificacaoNice : null,
+    classe_vienna: classeViena.length ? classeViena : null,
     status: despachoNome,
     despacho_codigo: despachoCodigo,
     data_deposito: dataDeposito,
@@ -93,11 +107,11 @@ function extrairProcesso(proc, numeroRevista) {
 async function upsertBatch(client, batch) {
   if (batch.length === 0) return;
 
-  const COLS = 15;
+  const COLS = 17;
   const placeholders = batch
     .map((_, i) => {
       const b = i * COLS;
-      return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15})`;
+      return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15},$${b+16},$${b+17})`;
     })
     .join(',');
 
@@ -107,7 +121,9 @@ async function upsertBatch(client, batch) {
       r.numero_processo, r.nome_marca, r.titular, r.pais, r.uf,
       r.classe_nice, r.status, r.despacho_codigo,
       r.data_deposito, r.data_concessao, r.data_vigencia,
-      r.tipo_marca, r.natureza, r.procurador, r.numero_revista
+      r.tipo_marca, r.natureza, r.procurador, r.numero_revista,
+      r.especificacao_nice ? JSON.stringify(r.especificacao_nice) : null,
+      r.classe_vienna
     );
   }
 
@@ -115,25 +131,26 @@ async function upsertBatch(client, batch) {
     `INSERT INTO marcas (
        numero_processo, nome_marca, titular, pais, uf, classe_nice,
        status, despacho_codigo, data_deposito, data_concessao, data_vigencia,
-       tipo_marca, natureza, procurador, numero_revista
+       tipo_marca, natureza, procurador, numero_revista,
+       especificacao_nice, classe_vienna
      ) VALUES ${placeholders}
      ON CONFLICT (numero_processo) DO UPDATE SET
-       -- campos de estado: só atualiza se a revista for mais recente
-       titular         = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.titular         ELSE marcas.titular END,
-       pais            = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.pais            ELSE marcas.pais END,
-       uf              = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.uf              ELSE marcas.uf END,
-       classe_nice     = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.classe_nice     ELSE marcas.classe_nice END,
-       status          = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.status          ELSE marcas.status END,
-       despacho_codigo = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.despacho_codigo ELSE marcas.despacho_codigo END,
-       data_concessao  = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.data_concessao, marcas.data_concessao) ELSE marcas.data_concessao END,
-       data_vigencia   = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.data_vigencia,  marcas.data_vigencia)  ELSE marcas.data_vigencia END,
-       procurador      = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.procurador,     marcas.procurador)     ELSE marcas.procurador END,
-       numero_revista  = GREATEST(marcas.numero_revista, EXCLUDED.numero_revista),
-       -- campos fixos: preenche nulo independente da ordem das revistas
-       nome_marca      = COALESCE(marcas.nome_marca,  EXCLUDED.nome_marca),
-       tipo_marca      = COALESCE(marcas.tipo_marca,  EXCLUDED.tipo_marca),
-       natureza        = COALESCE(marcas.natureza,    EXCLUDED.natureza),
-       data_deposito   = COALESCE(marcas.data_deposito, EXCLUDED.data_deposito)`,
+       titular           = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.titular           ELSE marcas.titular END,
+       pais              = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.pais              ELSE marcas.pais END,
+       uf                = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.uf                ELSE marcas.uf END,
+       classe_nice       = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.classe_nice       ELSE marcas.classe_nice END,
+       especificacao_nice= CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.especificacao_nice, marcas.especificacao_nice) ELSE marcas.especificacao_nice END,
+       classe_vienna     = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.classe_vienna,      marcas.classe_vienna)      ELSE marcas.classe_vienna END,
+       status            = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.status            ELSE marcas.status END,
+       despacho_codigo   = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.despacho_codigo   ELSE marcas.despacho_codigo END,
+       data_concessao    = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.data_concessao, marcas.data_concessao) ELSE marcas.data_concessao END,
+       data_vigencia     = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.data_vigencia,  marcas.data_vigencia)  ELSE marcas.data_vigencia END,
+       procurador        = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.procurador,     marcas.procurador)     ELSE marcas.procurador END,
+       numero_revista    = GREATEST(marcas.numero_revista, EXCLUDED.numero_revista),
+       nome_marca        = COALESCE(marcas.nome_marca,    EXCLUDED.nome_marca),
+       tipo_marca        = COALESCE(marcas.tipo_marca,    EXCLUDED.tipo_marca),
+       natureza          = COALESCE(marcas.natureza,      EXCLUDED.natureza),
+       data_deposito     = COALESCE(marcas.data_deposito, EXCLUDED.data_deposito)`,
     params
   );
 
