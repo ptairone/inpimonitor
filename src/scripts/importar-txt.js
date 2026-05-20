@@ -133,8 +133,16 @@ async function upsertBatch(client, batch, numeroRevista) {
 
 async function upsertHistoricoBatch(client, batch, numeroRevista) {
   if (batch.length === 0) return;
+
+  // Deduplica por (processo, codigo) — DO UPDATE não aceita duplicatas no mesmo batch
+  const seen = new Map();
+  for (const r of batch) {
+    seen.set(`${r.numero_processo}|${r.despacho_codigo || ''}`, r);
+  }
+  const deduped = Array.from(seen.values());
+
   const COLS = 5;
-  const placeholders = batch
+  const placeholders = deduped
     .map((_, i) => {
       const b = i * COLS;
       return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5})`;
@@ -142,7 +150,7 @@ async function upsertHistoricoBatch(client, batch, numeroRevista) {
     .join(',');
 
   const params = [];
-  for (const r of batch) {
+  for (const r of deduped) {
     params.push(r.numero_processo, r.despacho_codigo, r.status, numeroRevista, r.procurador);
   }
 

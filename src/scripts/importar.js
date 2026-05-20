@@ -143,15 +143,18 @@ async function upsertBatch(client, batch) {
 async function upsertHistoricoBatch(client, batch) {
   if (batch.length === 0) return;
 
-  const registros = [];
+  const seen = new Map();
   for (const r of batch) {
     const despachos = r.todos_despachos?.length
       ? r.todos_despachos
       : [{ codigo: r.despacho_codigo || '', texto: r.status }];
     for (const d of despachos) {
-      registros.push({ numero_processo: r.numero_processo, codigo: d.codigo || '', texto: d.texto, revista: r.numero_revista, procurador: r.procurador });
+      const codigo = d.codigo || '';
+      const key = `${r.numero_processo}|${r.numero_revista}|${codigo}`;
+      seen.set(key, { numero_processo: r.numero_processo, codigo, texto: d.texto, revista: r.numero_revista, procurador: r.procurador });
     }
   }
+  const registros = Array.from(seen.values());
 
   const COLS = 5;
   const placeholders = registros
