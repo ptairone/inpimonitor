@@ -23,6 +23,7 @@ router.get('/buscar', searchLimiter, async (req, res) => {
       concessao_de, concessao_ate,
       vigencia_de, vigencia_ate,
       sort_by, sort_order, sem_contagem, vigente,
+      numero_revista,
     } = req.query;
 
     const isFuzzy = fuzzy === 'true' && !!nome;
@@ -55,6 +56,7 @@ router.get('/buscar', searchLimiter, async (req, res) => {
     if (natureza)        add(`natureza ILIKE ?`, `%${natureza}%`);
     if (procurador)      add(`procurador ILIKE ?`, `%${procurador}%`);
     if (despacho_codigo) add(`despacho_codigo = ?`, despacho_codigo.trim());
+    if (numero_revista)  add(`numero_revista = ?`, parseInt10(numero_revista, null));
 
     if (classes.length === 1) {
       add(`? = ANY(classe_nice)`, classes[0]);
@@ -82,7 +84,7 @@ router.get('/buscar', searchLimiter, async (req, res) => {
           'status', 'vigente (true|false)',
           'uf', 'pais', 'tipo', 'natureza', 'procurador', 'despacho_codigo',
           'deposito_de', 'deposito_ate', 'concessao_de', 'concessao_ate',
-          'vigencia_de', 'vigencia_ate',
+          'vigencia_de', 'vigencia_ate', 'numero_revista',
         ],
         opcoes: [
           'sort_by: nome_marca | data_deposito | data_concessao | data_vigencia | titular | updated_at',

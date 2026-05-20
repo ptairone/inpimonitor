@@ -43,7 +43,7 @@ router.get('/top', async (req, res) => {
 // não apenas os que ele representa atualmente
 router.get('/buscar', async (req, res) => {
   try {
-    const { nome, uf, pais, sort_by, sort_order } = req.query;
+    const { nome, uf, pais, sort_by, sort_order, numero_revista } = req.query;
     if (!nome) return res.status(400).json({ error: 'Informe o parâmetro nome' });
 
     const page  = Math.max(1, parseInt10(req.query.page, 1));
@@ -59,8 +59,9 @@ router.get('/buscar', async (req, res) => {
       )`,
     ];
 
-    if (uf)   { params.push(uf);   conditions.push(`uf ILIKE $${params.length}`); }
-    if (pais) { params.push(pais); conditions.push(`pais ILIKE $${params.length}`); }
+    if (uf)             { params.push(uf);                          conditions.push(`uf ILIKE $${params.length}`); }
+    if (pais)           { params.push(pais);                        conditions.push(`pais ILIKE $${params.length}`); }
+    if (numero_revista) { params.push(parseInt10(numero_revista, null)); conditions.push(`numero_revista = $${params.length}`); }
 
     const whereClause = 'WHERE ' + conditions.join(' AND ');
 
