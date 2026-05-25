@@ -9,6 +9,7 @@ const path = require('path');
 const pool = require('../config/database');
 const { globalLimiter, searchLimiter } = require('./middleware/rateLimit');
 const { invalidatePrefix } = require('./middleware/cache');
+const apiKeyMiddleware    = require('./middleware/apiKey');
 const marcasRouter       = require('./routes/marcas');
 const statusRouter       = require('./routes/status');
 const statsRouter        = require('./routes/stats');
@@ -24,10 +25,26 @@ const DATA_PATH = process.env.DATA_PATH
   ? path.resolve(process.env.DATA_PATH)
   : path.join(__dirname, '../../data/xmls');
 
-app.use(cors());
+// CORS — aceita lista de origens via CORS_ORIGINS (vírgula separado) ou libera tudo
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
+  : null;
+
+app.use(cors(allowedOrigins
+  ? {
+      origin: (origin, cb) => {
+        if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+        cb(new Error(`Origem não permitida: ${origin}`));
+      },
+      credentials: true,
+    }
+  : {}
+));
+
 app.use(express.json());
 app.set('trust proxy', 1);
 app.use(globalLimiter);
+app.use(apiKeyMiddleware);
 
 app.use('/marcas',       marcasRouter);
 app.use('/status',       statusRouter);
@@ -132,7 +149,6 @@ cron.schedule('0 10 * * 2', async () => {
 
     console.log(`[CRON] RM${numStr} baixada (${count} processos). Iniciando importação...`);
 
-    // importa inline usando o mesmo módulo de importação
     const { importarRevista } = require('../scripts/importar');
     const importados = await importarRevista(xmlPath, proxima);
     console.log(`[CRON] RM${numStr} importada: ${importados} registros.`);

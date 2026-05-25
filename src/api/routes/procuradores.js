@@ -1,10 +1,36 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
-const { LIST_FIELDS, buildSort, parseInt10 } = require('../helpers');
+const {
+  LIST_FIELDS, FROM_MARCAS, SITUACAO_CASE,
+  buildSort, parseInt10, toCsv,
+} = require('../helpers');
+const { cacheMiddleware } = require('../middleware/cache');
+const { searchLimiter } = require('../middleware/rateLimit');
+
+// GET /procuradores/autocomplete?q=X
+router.get('/autocomplete', searchLimiter, cacheMiddleware(60), async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.trim().length < 2) return res.json([]);
+
+    const result = await pool.query(
+      `SELECT DISTINCT procurador
+       FROM marcas
+       WHERE procurador ILIKE $1 AND procurador IS NOT NULL AND procurador != ''
+       ORDER BY procurador
+       LIMIT 15`,
+      [`${q.trim()}%`]
+    );
+    res.json(result.rows.map((r) => r.procurador));
+  } catch (err) {
+    console.error('Erro em /procuradores/autocomplete:', err.message);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
 
 // GET /procuradores/top?limit=20&uf=SP
-router.get('/top', async (req, res) => {
+router.get('/top', cacheMiddleware(300), async (req, res) => {
   try {
     const limit = Math.min(100, Math.max(1, parseInt10(req.query.limit, 20)));
     const { uf, pais } = req.query;
@@ -38,10 +64,54 @@ router.get('/top', async (req, res) => {
   }
 });
 
+// GET /procuradores/stats?nome=X — distribuição por situação canônica e por status raw
+router.get('/stats', cacheMiddleware(300), async (req, res) => {
+  try {
+    const { nome } = req.query;
+    if (!nome) return res.status(400).json({ error: 'Informe o parâmetro nome' });
+
+    const param = [`%${nome}%`];
+
+    const [totalRes, situacaoRes, statusRes] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*) AS total, COUNT(DISTINCT titular) AS total_titulares
+         FROM marcas WHERE procurador ILIKE $1`,
+        param
+      ),
+      pool.query(
+        `SELECT ${SITUACAO_CASE} AS situacao, COUNT(*) AS qtd
+         ${FROM_MARCAS}
+         WHERE marcas.procurador ILIKE $1
+         GROUP BY situacao
+         ORDER BY qtd DESC`,
+        param
+      ),
+      pool.query(
+        `SELECT marcas.status, marcas.despacho_codigo, dc.categoria AS despacho_categoria,
+                COUNT(*) AS qtd
+         ${FROM_MARCAS}
+         WHERE marcas.procurador ILIKE $1
+         GROUP BY marcas.status, marcas.despacho_codigo, dc.categoria
+         ORDER BY qtd DESC`,
+        param
+      ),
+    ]);
+
+    res.json({
+      procurador: nome,
+      total: parseInt(totalRes.rows[0].total, 10),
+      total_titulares: parseInt(totalRes.rows[0].total_titulares, 10),
+      por_situacao: situacaoRes.rows,
+      por_status: statusRes.rows,
+    });
+  } catch (err) {
+    console.error('Erro em /procuradores/stats:', err.message);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // GET /procuradores/buscar?nome=X&uf=SP&sort_by=data_concessao
-// Retorna todos os processos onde o procurador já apareceu (histórico completo),
-// não apenas os que ele representa atualmente
-router.get('/buscar', async (req, res) => {
+router.get('/buscar', cacheMiddleware(120), async (req, res) => {
   try {
     const { nome, uf, pais, sort_by, sort_order, numero_revista } = req.query;
     if (!nome) return res.status(400).json({ error: 'Informe o parâmetro nome' });
@@ -52,33 +122,42 @@ router.get('/buscar', async (req, res) => {
 
     const params = [`%${nome}%`];
     const conditions = [
-      `numero_processo IN (
+      `marcas.numero_processo IN (
         SELECT DISTINCT numero_processo FROM historico_despachos WHERE procurador ILIKE $1
         UNION
         SELECT numero_processo FROM marcas WHERE procurador ILIKE $1
       )`,
     ];
 
-    if (uf)             { params.push(uf);                          conditions.push(`uf ILIKE $${params.length}`); }
-    if (pais)           { params.push(pais);                        conditions.push(`pais ILIKE $${params.length}`); }
-    if (numero_revista) { params.push(parseInt10(numero_revista, null)); conditions.push(`numero_revista = $${params.length}`); }
+    if (uf)             { params.push(uf);                          conditions.push(`marcas.uf ILIKE $${params.length}`); }
+    if (pais)           { params.push(pais);                        conditions.push(`marcas.pais ILIKE $${params.length}`); }
+    if (numero_revista) { params.push(parseInt10(numero_revista, null)); conditions.push(`marcas.numero_revista = $${params.length}`); }
 
     const whereClause = 'WHERE ' + conditions.join(' AND ');
 
-    const countResult = await pool.query(`SELECT COUNT(*) FROM marcas ${whereClause}`, params);
+    const countResult = await pool.query(
+      `SELECT COUNT(*) ${FROM_MARCAS} ${whereClause}`, params
+    );
     const total = parseInt(countResult.rows[0].count, 10);
 
-    const orderBy = buildSort(sort_by, sort_order, 'data_concessao DESC NULLS LAST');
+    const orderBy = buildSort(sort_by, sort_order, 'marcas.data_concessao DESC NULLS LAST');
     params.push(limit, offset);
 
     const dataResult = await pool.query(
       `SELECT ${LIST_FIELDS}
-       FROM marcas
+       ${FROM_MARCAS}
        ${whereClause}
        ORDER BY ${orderBy}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
+
+    // CSV export
+    if (req.query.formato === 'csv') {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="procurador.csv"');
+      return res.send(toCsv(dataResult.rows));
+    }
 
     res.json({
       data: dataResult.rows,

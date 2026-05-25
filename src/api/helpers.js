@@ -1,52 +1,94 @@
 const SORT_WHITELIST = {
-  nome_marca:     'nome_marca',
-  data_deposito:  'data_deposito',
-  data_concessao: 'data_concessao',
-  data_vigencia:  'data_vigencia',
-  titular:        'titular',
-  updated_at:     'updated_at',
+  nome_marca:     'marcas.nome_marca',
+  data_deposito:  'marcas.data_deposito',
+  data_concessao: 'marcas.data_concessao',
+  data_vigencia:  'marcas.data_vigencia',
+  titular:        'marcas.titular',
+  updated_at:     'marcas.updated_at',
 };
 
-// Campos para listagens (sem created_at, sem historico)
+// JOIN padrão usado em todos os SELECTs de marcas
+const FROM_MARCAS = `FROM marcas LEFT JOIN despacho_codigos dc ON dc.codigo = marcas.despacho_codigo`;
+
+// CASE que calcula a situação canônica server-side (elimina ambiguidade de categoria)
+// Indeferimento: despacho_codigo específico OR status text (fallback para códigos fora da tabela)
+// Arquivamento vai para 'extinto' (alinhado com Lovable)
+const SITUACAO_CASE = `
+  CASE
+    WHEN marcas.despacho_codigo IN ('157','158','159','IPAS015','IPAS017','IPAS018','IPAS024')
+         OR marcas.status ILIKE '%indefer%'
+      THEN 'indeferido'
+    WHEN dc.categoria = 'extincao'
+         OR marcas.status ILIKE '%arquiv%'
+         OR (marcas.data_vigencia IS NOT NULL
+             AND marcas.data_vigencia <= CURRENT_DATE
+             AND marcas.data_concessao IS NOT NULL)
+      THEN 'extinto'
+    WHEN dc.categoria IN ('recurso','nulidade')
+      THEN 'recurso'
+    WHEN marcas.data_vigencia IS NOT NULL
+         AND marcas.data_vigencia > CURRENT_DATE
+         AND dc.categoria = 'concessao'
+      THEN 'vigor'
+    ELSE 'analise'
+  END`;
+
+// WHERE snippets para filtrar por situacao canônica sem depender de categoria
+const SITUACAO_WHERE = {
+  indeferido: `(marcas.despacho_codigo IN ('157','158','159','IPAS015','IPAS017','IPAS018','IPAS024') OR marcas.status ILIKE '%indefer%')`,
+  extinto:    `(dc.categoria = 'extincao' OR marcas.status ILIKE '%arquiv%' OR (marcas.data_vigencia IS NOT NULL AND marcas.data_vigencia <= CURRENT_DATE AND marcas.data_concessao IS NOT NULL))`,
+  recurso:    `dc.categoria IN ('recurso','nulidade')`,
+  vigor:      `(marcas.data_vigencia IS NOT NULL AND marcas.data_vigencia > CURRENT_DATE AND dc.categoria = 'concessao')`,
+};
+
+// Campos para listagens (JOIN com dc já incluso via FROM_MARCAS)
 const LIST_FIELDS = `
-  id, numero_processo, nome_marca, titular, pais, uf,
-  classe_nice,
-  CASE WHEN classe_nice IS NOT NULL THEN ARRAY(
-    SELECT COALESCE(cd.descricao, u.cls)
-    FROM unnest(classe_nice) WITH ORDINALITY AS u(cls, idx)
-    LEFT JOIN classe_nice_descricoes cd ON cd.classe = u.cls
+  marcas.id, marcas.numero_processo, marcas.nome_marca, marcas.titular, marcas.pais, marcas.uf,
+  marcas.classe_nice,
+  CASE WHEN marcas.classe_nice IS NOT NULL THEN ARRAY(
+    SELECT COALESCE(cnd.descricao, u.cls)
+    FROM unnest(marcas.classe_nice) WITH ORDINALITY AS u(cls, idx)
+    LEFT JOIN classe_nice_descricoes cnd ON cnd.classe = u.cls
     ORDER BY u.idx
   ) END AS classe_descricoes,
-  status, despacho_codigo,
-  (SELECT descricao FROM despacho_codigos WHERE codigo = despacho_codigo) AS despacho_descricao,
-  (SELECT categoria FROM despacho_codigos WHERE codigo = despacho_codigo) AS despacho_categoria,
-  data_deposito, data_concessao, data_vigencia,
-  tipo_marca, natureza, procurador, numero_revista,
-  updated_at,
-  (data_vigencia IS NOT NULL AND data_vigencia > CURRENT_DATE) AS vigente,
-  CASE WHEN data_vigencia IS NOT NULL THEN (data_vigencia - CURRENT_DATE)::INT END AS dias_para_vencer
+  marcas.status, marcas.despacho_codigo,
+  dc.descricao  AS despacho_descricao,
+  dc.categoria  AS despacho_categoria,
+  marcas.data_deposito, marcas.data_concessao, marcas.data_vigencia,
+  marcas.tipo_marca, marcas.natureza, marcas.procurador, marcas.numero_revista,
+  marcas.updated_at,
+  (marcas.data_vigencia IS NOT NULL AND marcas.data_vigencia > CURRENT_DATE) AS vigente,
+  CASE WHEN marcas.data_vigencia IS NOT NULL
+    THEN (marcas.data_vigencia - CURRENT_DATE)::INT
+  END AS dias_para_vencer,
+  ${SITUACAO_CASE} AS situacao_calculada
 `;
 
-// Campos para endpoints de detalhe (registro completo + historico)
+// Campos para endpoints de detalhe (registro completo)
 const DETAIL_FIELDS = `
-  id, numero_processo, nome_marca, titular, pais, uf,
-  classe_nice,
-  CASE WHEN classe_nice IS NOT NULL THEN ARRAY(
-    SELECT COALESCE(cd.descricao, u.cls)
-    FROM unnest(classe_nice) WITH ORDINALITY AS u(cls, idx)
-    LEFT JOIN classe_nice_descricoes cd ON cd.classe = u.cls
+  marcas.id, marcas.numero_processo, marcas.nome_marca, marcas.titular, marcas.pais, marcas.uf,
+  marcas.classe_nice,
+  CASE WHEN marcas.classe_nice IS NOT NULL THEN ARRAY(
+    SELECT COALESCE(cnd.descricao, u.cls)
+    FROM unnest(marcas.classe_nice) WITH ORDINALITY AS u(cls, idx)
+    LEFT JOIN classe_nice_descricoes cnd ON cnd.classe = u.cls
     ORDER BY u.idx
   ) END AS classe_descricoes,
-  especificacao_nice, classe_vienna,
-  status, despacho_codigo,
-  (SELECT descricao FROM despacho_codigos WHERE codigo = despacho_codigo) AS despacho_descricao,
-  (SELECT categoria FROM despacho_codigos WHERE codigo = despacho_codigo) AS despacho_categoria,
-  data_deposito, data_concessao, data_vigencia,
-  tipo_marca, natureza, procurador, numero_revista,
-  created_at, updated_at,
-  (data_vigencia IS NOT NULL AND data_vigencia > CURRENT_DATE) AS vigente,
-  CASE WHEN data_vigencia IS NOT NULL THEN (data_vigencia - CURRENT_DATE)::INT END AS dias_para_vencer,
-  CASE WHEN data_deposito IS NOT NULL THEN EXTRACT(YEAR FROM AGE(data_deposito))::INT END AS anos_desde_deposito
+  marcas.especificacao_nice, marcas.classe_vienna,
+  marcas.status, marcas.despacho_codigo,
+  dc.descricao  AS despacho_descricao,
+  dc.categoria  AS despacho_categoria,
+  marcas.data_deposito, marcas.data_concessao, marcas.data_vigencia,
+  marcas.tipo_marca, marcas.natureza, marcas.procurador, marcas.numero_revista,
+  marcas.created_at, marcas.updated_at,
+  (marcas.data_vigencia IS NOT NULL AND marcas.data_vigencia > CURRENT_DATE) AS vigente,
+  CASE WHEN marcas.data_vigencia IS NOT NULL
+    THEN (marcas.data_vigencia - CURRENT_DATE)::INT
+  END AS dias_para_vencer,
+  CASE WHEN marcas.data_deposito IS NOT NULL
+    THEN EXTRACT(YEAR FROM AGE(marcas.data_deposito))::INT
+  END AS anos_desde_deposito,
+  ${SITUACAO_CASE} AS situacao_calculada
 `;
 
 function buildSort(sortBy, sortOrder, defaultSort) {
@@ -88,4 +130,8 @@ function toCsv(rows) {
   return lines.join('\r\n');
 }
 
-module.exports = { LIST_FIELDS, DETAIL_FIELDS, buildSort, parseClasses, parseInt10, isValidDate, toCsv };
+module.exports = {
+  LIST_FIELDS, DETAIL_FIELDS,
+  FROM_MARCAS, SITUACAO_CASE, SITUACAO_WHERE,
+  buildSort, parseClasses, parseInt10, isValidDate, toCsv,
+};

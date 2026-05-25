@@ -1,9 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
-const { LIST_FIELDS, DETAIL_FIELDS, buildSort, parseClasses, parseInt10, isValidDate, toCsv } = require('../helpers');
+const {
+  LIST_FIELDS, DETAIL_FIELDS, FROM_MARCAS, SITUACAO_WHERE,
+  buildSort, parseClasses, parseInt10, isValidDate, toCsv,
+} = require('../helpers');
 const { fetchImagem, fetchPeticoes } = require('../../scripts/imagens');
 const { searchLimiter } = require('../middleware/rateLimit');
+const { cacheMiddleware } = require('../middleware/cache');
 
 function sendList(req, res, rows, meta) {
   if (req.query.formato === 'csv') {
@@ -14,12 +18,33 @@ function sendList(req, res, rows, meta) {
   res.json({ data: rows, ...meta });
 }
 
+// GET /marcas/autocomplete?q=X — sugestões rápidas de nome de marca (mín. 2 chars)
+router.get('/autocomplete', searchLimiter, cacheMiddleware(60), async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.trim().length < 2) return res.json([]);
+
+    const result = await pool.query(
+      `SELECT DISTINCT nome_marca
+       FROM marcas
+       WHERE nome_marca ILIKE $1 AND nome_marca IS NOT NULL
+       ORDER BY nome_marca
+       LIMIT 15`,
+      [`${q.trim()}%`]
+    );
+    res.json(result.rows.map((r) => r.nome_marca));
+  } catch (err) {
+    console.error('Erro em /marcas/autocomplete:', err.message);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // GET /marcas/buscar
 router.get('/buscar', searchLimiter, async (req, res) => {
   try {
     const {
       nome, fuzzy, titular, processo, status,
-      uf, pais, tipo, natureza, procurador, despacho_codigo,
+      uf, pais, tipo, natureza, procurador, despacho_codigo, despacho_categoria, situacao,
       deposito_de, deposito_ate,
       concessao_de, concessao_ate,
       vigencia_de, vigencia_ate,
@@ -42,39 +67,45 @@ router.get('/buscar', searchLimiter, async (req, res) => {
       conditions.push(condition.replace('?', `$${params.length}`));
     };
 
-    if (nome && !isFuzzy) add(`search_vector @@ websearch_to_tsquery('portuguese', ?)`, nome);
+    if (nome && !isFuzzy) add(`marcas.search_vector @@ websearch_to_tsquery('portuguese', ?)`, nome);
     if (isFuzzy) {
       params.push(nome);
       fuzzyNomeIdx = params.length;
-      conditions.push(`similarity(nome_marca, $${fuzzyNomeIdx}) > 0.2`);
+      conditions.push(`similarity(marcas.nome_marca, $${fuzzyNomeIdx}) > 0.2`);
     }
-    if (titular)         add(`titular ILIKE ?`, `%${titular}%`);
-    if (processo)        add(`numero_processo = ?`, processo.trim());
-    if (status)          add(`status ILIKE ?`, `%${status}%`);
-    if (uf)              add(`uf ILIKE ?`, uf.trim());
-    if (pais)            add(`pais ILIKE ?`, pais.trim());
-    if (tipo)            add(`tipo_marca ILIKE ?`, `%${tipo}%`);
-    if (natureza)        add(`natureza ILIKE ?`, `%${natureza}%`);
-    if (procurador)      add(`procurador ILIKE ?`, `%${procurador}%`);
-    if (despacho_codigo) add(`despacho_codigo = ?`, despacho_codigo.trim());
-    if (numero_revista)  add(`numero_revista = ?`, parseInt10(numero_revista, null));
+    if (titular)            add(`marcas.titular ILIKE ?`,          `%${titular}%`);
+    if (processo)           add(`marcas.numero_processo = ?`,       processo.trim());
+    if (status)             add(`marcas.status ILIKE ?`,            `%${status}%`);
+    if (uf)                 add(`marcas.uf ILIKE ?`,                uf.trim());
+    if (pais)               add(`marcas.pais ILIKE ?`,              pais.trim());
+    if (tipo)               add(`marcas.tipo_marca ILIKE ?`,        `%${tipo}%`);
+    if (natureza)           add(`marcas.natureza ILIKE ?`,          `%${natureza}%`);
+    if (procurador)         add(`marcas.procurador ILIKE ?`,        `%${procurador}%`);
+    if (despacho_codigo)    add(`marcas.despacho_codigo = ?`,       despacho_codigo.trim());
+    if (despacho_categoria) add(`dc.categoria = ?`,                 despacho_categoria.trim());
+    if (numero_revista)     add(`marcas.numero_revista = ?`,        parseInt10(numero_revista, null));
+
+    // Filtro por situação canônica (agrupa todos os códigos de indeferimento, extinção etc.)
+    if (situacao && SITUACAO_WHERE[situacao]) {
+      conditions.push(SITUACAO_WHERE[situacao]);
+    }
 
     if (classes.length === 1) {
-      add(`? = ANY(classe_nice)`, classes[0]);
+      add(`? = ANY(marcas.classe_nice)`, classes[0]);
     } else if (classes.length > 1) {
       params.push(classes);
-      conditions.push(`classe_nice && $${params.length}`);
+      conditions.push(`marcas.classe_nice && $${params.length}`);
     }
 
-    if (vigente === 'true')  conditions.push('data_vigencia > CURRENT_DATE');
-    if (vigente === 'false') conditions.push('(data_vigencia IS NULL OR data_vigencia <= CURRENT_DATE)');
+    if (vigente === 'true')  conditions.push('marcas.data_vigencia > CURRENT_DATE');
+    if (vigente === 'false') conditions.push('(marcas.data_vigencia IS NULL OR marcas.data_vigencia <= CURRENT_DATE)');
 
-    if (isValidDate(deposito_de))   add(`data_deposito >= ?`, deposito_de);
-    if (isValidDate(deposito_ate))  add(`data_deposito <= ?`, deposito_ate);
-    if (isValidDate(concessao_de))  add(`data_concessao >= ?`, concessao_de);
-    if (isValidDate(concessao_ate)) add(`data_concessao <= ?`, concessao_ate);
-    if (isValidDate(vigencia_de))   add(`data_vigencia >= ?`, vigencia_de);
-    if (isValidDate(vigencia_ate))  add(`data_vigencia <= ?`, vigencia_ate);
+    if (isValidDate(deposito_de))   add(`marcas.data_deposito >= ?`,  deposito_de);
+    if (isValidDate(deposito_ate))  add(`marcas.data_deposito <= ?`,  deposito_ate);
+    if (isValidDate(concessao_de))  add(`marcas.data_concessao >= ?`, concessao_de);
+    if (isValidDate(concessao_ate)) add(`marcas.data_concessao <= ?`, concessao_ate);
+    if (isValidDate(vigencia_de))   add(`marcas.data_vigencia >= ?`,  vigencia_de);
+    if (isValidDate(vigencia_ate))  add(`marcas.data_vigencia <= ?`,  vigencia_ate);
 
     if (conditions.length === 0) {
       return res.status(400).json({
@@ -83,7 +114,9 @@ router.get('/buscar', searchLimiter, async (req, res) => {
           'nome', 'titular', 'processo',
           'classe (valor único ou separados por vírgula: 01,30)',
           'status', 'vigente (true|false)',
-          'uf', 'pais', 'tipo', 'natureza', 'procurador', 'despacho_codigo',
+          'uf', 'pais', 'tipo', 'natureza', 'procurador',
+          'despacho_codigo', 'despacho_categoria',
+          'situacao (vigor|analise|recurso|indeferido|extinto)',
           'deposito_de', 'deposito_ate', 'concessao_de', 'concessao_ate',
           'vigencia_de', 'vigencia_ate', 'numero_revista',
         ],
@@ -101,24 +134,26 @@ router.get('/buscar', searchLimiter, async (req, res) => {
 
     let total = null;
     if (sem_contagem !== 'true') {
-      const countResult = await pool.query(`SELECT COUNT(*) FROM marcas ${whereClause}`, params);
+      const countResult = await pool.query(
+        `SELECT COUNT(*) ${FROM_MARCAS} ${whereClause}`, params
+      );
       total = parseInt(countResult.rows[0].count, 10);
     }
 
     let orderBy;
     if (isFuzzy && !sort_by) {
-      orderBy = `similarity(nome_marca, $${fuzzyNomeIdx}) DESC`;
+      orderBy = `similarity(marcas.nome_marca, $${fuzzyNomeIdx}) DESC`;
     } else if (nome && !sort_by && !isFuzzy) {
       params.push(nome);
-      orderBy = `ts_rank(search_vector, websearch_to_tsquery('portuguese', $${params.length})) DESC`;
+      orderBy = `ts_rank(marcas.search_vector, websearch_to_tsquery('portuguese', $${params.length})) DESC`;
     } else {
-      orderBy = buildSort(sort_by, sort_order, 'data_concessao DESC NULLS LAST');
+      orderBy = buildSort(sort_by, sort_order, 'marcas.data_concessao DESC NULLS LAST');
     }
 
     params.push(limit, offset);
     const dataResult = await pool.query(
       `SELECT ${LIST_FIELDS}
-       FROM marcas
+       ${FROM_MARCAS}
        ${whereClause}
        ORDER BY ${orderBy}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -134,7 +169,7 @@ router.get('/buscar', searchLimiter, async (req, res) => {
   }
 });
 
-// GET /marcas/vencendo?dias=90 — marcas que vencem nos próximos N dias
+// GET /marcas/vencendo?dias=90
 router.get('/vencendo', async (req, res) => {
   try {
     const dias  = Math.min(3650, Math.max(1, parseInt10(req.query.dias, 90)));
@@ -144,19 +179,19 @@ router.get('/vencendo', async (req, res) => {
     const { sort_by, sort_order } = req.query;
 
     const countResult = await pool.query(
-      `SELECT COUNT(*) FROM marcas
-       WHERE data_vigencia >= CURRENT_DATE
-         AND data_vigencia <= CURRENT_DATE + ($1 * INTERVAL '1 day')`,
+      `SELECT COUNT(*) ${FROM_MARCAS}
+       WHERE marcas.data_vigencia >= CURRENT_DATE
+         AND marcas.data_vigencia <= CURRENT_DATE + ($1 * INTERVAL '1 day')`,
       [dias]
     );
     const total = parseInt(countResult.rows[0].count, 10);
 
-    const orderBy = buildSort(sort_by, sort_order, 'data_vigencia ASC NULLS LAST');
+    const orderBy = buildSort(sort_by, sort_order, 'marcas.data_vigencia ASC NULLS LAST');
     const dataResult = await pool.query(
       `SELECT ${LIST_FIELDS}
-       FROM marcas
-       WHERE data_vigencia >= CURRENT_DATE
-         AND data_vigencia <= CURRENT_DATE + ($1 * INTERVAL '1 day')
+       ${FROM_MARCAS}
+       WHERE marcas.data_vigencia >= CURRENT_DATE
+         AND marcas.data_vigencia <= CURRENT_DATE + ($1 * INTERVAL '1 day')
        ORDER BY ${orderBy}
        LIMIT $2 OFFSET $3`,
       [dias, limit, offset]
@@ -174,13 +209,17 @@ router.get('/processo/:numero', async (req, res) => {
   try {
     const numero = req.params.numero.trim();
     const [marcaResult, historicoResult] = await Promise.all([
-      pool.query(`SELECT ${DETAIL_FIELDS} FROM marcas WHERE numero_processo = $1`, [numero]),
       pool.query(
-        `SELECT despacho_codigo, despacho_texto, numero_revista, created_at,
-                (SELECT descricao FROM despacho_codigos WHERE codigo = despacho_codigo) AS despacho_descricao
-         FROM historico_despachos
-         WHERE numero_processo = $1
-         ORDER BY numero_revista ASC`,
+        `SELECT ${DETAIL_FIELDS} ${FROM_MARCAS} WHERE marcas.numero_processo = $1`,
+        [numero]
+      ),
+      pool.query(
+        `SELECT hd.despacho_codigo, hd.despacho_texto, hd.numero_revista, hd.created_at,
+                dc2.descricao AS despacho_descricao
+         FROM historico_despachos hd
+         LEFT JOIN despacho_codigos dc2 ON dc2.codigo = hd.despacho_codigo
+         WHERE hd.numero_processo = $1
+         ORDER BY hd.numero_revista ASC`,
         [numero]
       ),
     ]);
@@ -195,7 +234,7 @@ router.get('/processo/:numero', async (req, res) => {
   }
 });
 
-// GET /marcas/:id/similares — marcas com nome parecido (full-text)
+// GET /marcas/:id/similares
 router.get('/:id/similares', async (req, res) => {
   try {
     const id = parseInt10(req.params.id, 0);
@@ -213,10 +252,10 @@ router.get('/:id/similares', async (req, res) => {
 
     const result = await pool.query(
       `SELECT ${LIST_FIELDS},
-              ts_rank(search_vector, websearch_to_tsquery('portuguese', $1)) AS relevancia
-       FROM marcas
-       WHERE search_vector @@ websearch_to_tsquery('portuguese', $1)
-         AND id != $2
+              ts_rank(marcas.search_vector, websearch_to_tsquery('portuguese', $1)) AS relevancia
+       ${FROM_MARCAS}
+       WHERE marcas.search_vector @@ websearch_to_tsquery('portuguese', $1)
+         AND marcas.id != $2
        ORDER BY relevancia DESC
        LIMIT $3`,
       [nome, id, limit]
@@ -236,13 +275,17 @@ router.get('/:id', async (req, res) => {
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     const [marcaResult, historicoResult] = await Promise.all([
-      pool.query(`SELECT ${DETAIL_FIELDS} FROM marcas WHERE id = $1`, [id]),
       pool.query(
-        `SELECT despacho_codigo, despacho_texto, numero_revista, created_at,
-                (SELECT descricao FROM despacho_codigos WHERE codigo = despacho_codigo) AS despacho_descricao
-         FROM historico_despachos
-         WHERE numero_processo = (SELECT numero_processo FROM marcas WHERE id = $1)
-         ORDER BY numero_revista ASC`,
+        `SELECT ${DETAIL_FIELDS} ${FROM_MARCAS} WHERE marcas.id = $1`,
+        [id]
+      ),
+      pool.query(
+        `SELECT hd.despacho_codigo, hd.despacho_texto, hd.numero_revista, hd.created_at,
+                dc2.descricao AS despacho_descricao
+         FROM historico_despachos hd
+         LEFT JOIN despacho_codigos dc2 ON dc2.codigo = hd.despacho_codigo
+         WHERE hd.numero_processo = (SELECT numero_processo FROM marcas WHERE id = $1)
+         ORDER BY hd.numero_revista ASC`,
         [id]
       ),
     ]);
@@ -253,13 +296,11 @@ router.get('/:id', async (req, res) => {
 
     const marca = marcaResult.rows[0];
 
-    // Petições: retorna do banco (busca no INPI em background se ainda não tiver)
     const peticoesResult = await pool.query(
       'SELECT protocolo, data_peticao, servico, cliente, numero_img, data_delivery FROM peticoes WHERE numero_processo = $1 ORDER BY data_peticao ASC',
       [marca.numero_processo]
     );
 
-    // Se não tiver petições ainda, dispara busca em background (não bloqueia a resposta)
     if (peticoesResult.rows.length === 0) {
       fetchPeticoes(marca.numero_processo).catch(() => {});
     }
@@ -276,7 +317,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// GET /marcas/:processo/imagem — retorna a imagem da marca (cache local, busca no INPI se necessário)
+// GET /marcas/:processo/imagem
 router.get('/:processo/imagem', async (req, res) => {
   const { processo } = req.params;
   if (!/^\d+$/.test(processo)) return res.status(400).json({ error: 'Número de processo inválido' });

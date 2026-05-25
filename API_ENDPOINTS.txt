@@ -1,0 +1,428 @@
+
+
+================================================================================
+MARCAS
+================================================================================
+
+GET /marcas/autocomplete?q=X
+-----------------------------
+Sugestões rápidas de nome de marca (mín. 2 caracteres, máx. 15 resultados).
+Resposta: ["NATURA", "NATURA EKOS", ...]
+
+--------------------------------------------------------------------------------
+
+GET /marcas/buscar
+------------------
+Parâmetros:
+  nome               string        Busca full-text no nome da marca
+  titular            string        Nome do titular (parcial)
+  processo           string        Número exato do processo
+  classe             string        Classe Nice — único (25) ou múltiplos (25,35,42)
+  status             string        Texto do despacho (parcial)
+  vigente            true|false    Filtra por vigência atual
+  situacao           string        Situação canônica calculada server-side:
+                                   vigor | analise | recurso | indeferido | extinto
+  uf                 string        UF do titular (ex: SP)
+  pais               string        País do titular (ex: BR)
+  tipo               string        Tipo da marca (ex: Mista)
+  natureza           string        Natureza (ex: Produtos)
+  procurador         string        Nome do procurador (parcial)
+  despacho_codigo    string        Código exato do despacho (ex: IPAS029)
+  despacho_categoria string        Categoria do despacho (ex: concessao, exame, recurso)
+  deposito_de        YYYY-MM-DD    Data de depósito — início
+  deposito_ate       YYYY-MM-DD    Data de depósito — fim
+  concessao_de       YYYY-MM-DD    Data de concessão — início
+  concessao_ate      YYYY-MM-DD    Data de concessão — fim
+  vigencia_de        YYYY-MM-DD    Data de vigência — início
+  vigencia_ate       YYYY-MM-DD    Data de vigência — fim
+  sort_by            string        nome_marca | data_deposito | data_concessao |
+                                   data_vigencia | titular | updated_at
+  sort_order         string        asc | desc (padrão: desc)
+  page               number        Página (padrão: 1)
+  limit              number        Itens por página — máx 100 (padrão: 20)
+  sem_contagem       true          Omite o total para resposta mais rápida
+  formato            csv           Retorna arquivo CSV em vez de JSON
+
+Resposta:
+{
+  "data": [
+    {
+      "id": 1,
+      "numero_processo": "900123456",
+      "nome_marca": "NATURA",
+      "titular": "NATURA COSMÉTICOS S.A.",
+      "pais": "BR",
+      "uf": "SP",
+      "classe_nice": ["03", "44"],
+      "classe_descricoes": ["Preparações para limpar e polir...", "Serviços médicos..."],
+      "status": "Registro concedido",
+      "despacho_codigo": "171",
+      "despacho_descricao": "Registro concedido",
+      "despacho_categoria": "concessao",
+      "data_deposito": "1999-04-01",
+      "data_concessao": "2002-06-18",
+      "data_vigencia": "2032-06-18",
+      "tipo_marca": "Mista",
+      "natureza": "Produtos e/ou Serviço",
+      "procurador": "Nome do Procurador",
+      "numero_revista": 2784,
+      "updated_at": "2026-05-10T20:02:39.011Z",
+      "vigente": true,
+      "dias_para_vencer": 2925
+    }
+  ],
+  "total": 18510,
+  "page": 1,
+  "limit": 20,
+  "paginas": 926
+}
+
+--------------------------------------------------------------------------------
+
+GET /marcas/processo/:numero
+----------------------------
+Exemplo: GET /marcas/processo/900123456
+
+Resposta: todos os campos acima + created_at, anos_desde_deposito e:
+{
+  "historico": [
+    {
+      "despacho_codigo": "151.1",
+      "despacho_descricao": "Pedido de marca depositado",
+      "despacho_texto": "Pedido de marca depositado",
+      "numero_revista": 1700,
+      "created_at": "2026-05-10T20:02:39.011Z"
+    }
+  ]
+}
+
+--------------------------------------------------------------------------------
+
+GET /marcas/:id
+---------------
+Exemplo: GET /marcas/42
+Mesma resposta que /marcas/processo/:numero.
+
+--------------------------------------------------------------------------------
+
+GET /marcas/vencendo
+--------------------
+Parâmetros:
+  dias        number    Janela de vencimento em dias (padrão: 90, máx: 3650)
+  sort_by     string    Ordenação (padrão: data_vigencia ASC)
+  sort_order  string    asc | desc
+  page        number    Paginação
+  limit       number    Itens por página
+  formato     csv       Exportar CSV
+
+Resposta:
+{
+  "dias": 90,
+  "data": [ ...mesmos campos da listagem ],
+  "total": 4200,
+  "page": 1,
+  "limit": 20,
+  "paginas": 210
+}
+
+--------------------------------------------------------------------------------
+
+GET /marcas/:id/similares
+--------------------------
+Parâmetros:
+  limit   number   Quantidade de resultados (padrão: 10, máx: 20)
+
+Resposta:
+{
+  "marca_referencia": "NATURA",
+  "total": 8,
+  "data": [ ...mesmos campos da listagem + "relevancia" ]
+}
+
+================================================================================
+TITULARES
+================================================================================
+
+GET /titulares/autocomplete?q=X
+--------------------------------
+Sugestões rápidas de nome de titular (mín. 2 caracteres, máx. 15 resultados).
+Resposta: ["NATURA COSMÉTICOS S.A.", ...]
+
+--------------------------------------------------------------------------------
+
+GET /titulares/top
+------------------
+Parâmetros:
+  limit   number   Quantidade de resultados (padrão: 20, máx: 100)
+  pais    string   Filtrar por país (ex: BR)
+  uf      string   Filtrar por UF (ex: SP)
+
+Resposta:
+[
+  {
+    "titular": "NATURA COSMÉTICOS S.A.",
+    "pais": "BR",
+    "uf": "SP",
+    "total_marcas": 312,
+    "marcas_vigentes": 198,
+    "ultima_concessao": "2024-03-10"
+  }
+]
+
+--------------------------------------------------------------------------------
+
+GET /titulares/stats?nome=X
+----------------------------
+Distribuição por situação canônica, classes e depósitos por ano de um titular.
+
+Resposta:
+{
+  "titular": "NATURA COSMÉTICOS S.A.",
+  "total": 312,
+  "primeiro_deposito": "1969-03-01",
+  "ultimo_deposito": "2025-11-20",
+  "ultima_concessao": "2024-03-10",
+  "por_situacao": [
+    { "situacao": "vigor", "qtd": 198 },
+    { "situacao": "extinto", "qtd": 80 },
+    ...
+  ],
+  "por_status": [...],
+  "top_classes": [{ "classe": "03", "total": 95 }, ...],
+  "depositos_por_ano": [{ "ano": 2024, "depositos": 18 }, ...]
+}
+
+--------------------------------------------------------------------------------
+
+GET /titulares/buscar
+---------------------
+Parâmetros:
+  nome        string   Nome do titular (parcial) — obrigatório
+  pais        string   Filtrar por país
+  uf          string   Filtrar por UF
+  sort_by     string   Ordenação
+  sort_order  string   asc | desc
+  page        number   Paginação
+  limit       number   Itens por página
+  formato     csv      Exportar CSV
+
+Resposta: lista paginada com os mesmos campos de /marcas/buscar.
+
+================================================================================
+PROCURADORES
+================================================================================
+
+GET /procuradores/autocomplete?q=X
+-----------------------------------
+Sugestões rápidas de nome de procurador (mín. 2 caracteres, máx. 15 resultados).
+Resposta: ["Nome A", "Nome B", ...]
+
+--------------------------------------------------------------------------------
+
+GET /procuradores/top
+---------------------
+Parâmetros:
+  limit   number   Quantidade de resultados (padrão: 20, máx: 100)
+  uf      string   Filtrar por UF
+  pais    string   Filtrar por país
+
+Resposta:
+[
+  {
+    "procurador": "Nome do Procurador",
+    "total_marcas": 1520,
+    "marcas_vigentes": 890,
+    "total_titulares": 340,
+    "ultima_concessao": "2025-01-15"
+  }
+]
+
+--------------------------------------------------------------------------------
+
+GET /procuradores/stats?nome=X
+------------------------------
+Distribuição por situação canônica e por status raw de um procurador.
+
+Resposta:
+{
+  "procurador": "BLIND REGISTRO DE MARCAS LTDA",
+  "total": 1453,
+  "total_titulares": 312,
+  "por_situacao": [
+    { "situacao": "vigor",       "qtd": 510 },
+    { "situacao": "analise",     "qtd": 474 },
+    { "situacao": "indeferido",  "qtd": 197 },
+    { "situacao": "extinto",     "qtd": 107 },
+    { "situacao": "recurso",     "qtd":  18 }
+  ],
+  "por_status": [
+    { "status": "Concessão de registro", "despacho_codigo": "IPAS029", "despacho_categoria": "concessao", "qtd": 510 },
+    ...
+  ]
+}
+
+--------------------------------------------------------------------------------
+
+GET /procuradores/buscar
+------------------------
+Parâmetros:
+  nome        string   Nome do procurador (parcial) — obrigatório
+  uf          string   Filtrar por UF
+  pais        string   Filtrar por país
+  sort_by     string   Ordenação
+  sort_order  string   asc | desc
+  page        number   Paginação
+  limit       number   Itens por página
+  formato     csv      Exportar CSV
+
+Resposta: lista paginada com os mesmos campos de /marcas/buscar.
+
+================================================================================
+CLASSES NICE
+================================================================================
+
+GET /classes
+------------
+Lista todas as classes com contagens.
+
+Resposta:
+[
+  {
+    "classe": "25",
+    "total_marcas": 412000,
+    "marcas_vigentes": 98000,
+    "marcas_concedidas": 180000
+  }
+]
+
+--------------------------------------------------------------------------------
+
+GET /classes/:numero
+--------------------
+Exemplo: GET /classes/25
+
+Parâmetros:
+  sort_by     string   Ordenação
+  sort_order  string   asc | desc
+  page        number   Paginação
+  limit       number   Itens por página
+  formato     csv      Exportar CSV
+
+Resposta:
+{
+  "classe": "25",
+  "data": [ ...mesmos campos de /marcas/buscar ],
+  "total": 412000,
+  "page": 1,
+  "limit": 20,
+  "paginas": 20600
+}
+
+================================================================================
+ESTATÍSTICAS
+================================================================================
+
+GET /stats/resumo
+-----------------
+Resposta:
+{
+  "total_marcas": "5814867",
+  "vigentes": "1531558",
+  "expiradas": "224637",
+  "sem_vigencia": "4058672",
+  "concedidas": "1756196",
+  "total_titulares": "2395364",
+  "total_procuradores": "68392",
+  "revista_mais_antiga": 1679,
+  "revista_mais_recente": 2887,
+  "deposito_mais_antigo": "1900-01-01",
+  "deposito_mais_recente": "2025-12-01",
+  "total_historico_despachos": "0"
+}
+
+--------------------------------------------------------------------------------
+
+GET /stats/vencendo-por-mes
+---------------------------
+Parâmetros:
+  meses   number   Janela em meses (padrão: 24, máx: 120)
+
+Resposta:
+{
+  "meses": 24,
+  "data": [
+    { "ano": 2026, "mes": 6, "periodo": "2026-06", "total": 4821 }
+  ]
+}
+
+--------------------------------------------------------------------------------
+
+GET /stats/por-uf
+-----------------
+Resposta: [ { "uf": "SP", "total": 1200000, "vigentes": 400000 } ]
+
+GET /stats/por-pais
+-------------------
+Resposta: [ { "pais": "BR", "total": 5000000, "vigentes": 1400000 } ]
+
+GET /stats/por-classe
+---------------------
+Resposta: [ { "classe": "35", "total": 500000, "vigentes": 120000 } ]
+
+GET /stats/por-status
+---------------------
+Resposta:
+[
+  {
+    "despacho_codigo": "171",
+    "despacho_descricao": "Registro concedido",
+    "despacho_categoria": "concessao",
+    "total": 980000
+  }
+]
+
+GET /stats/por-tipo
+-------------------
+Resposta: [ { "tipo_marca": "Mista", "total": 3000000, "vigentes": 900000 } ]
+
+GET /stats/por-natureza
+-----------------------
+Resposta: [ { "natureza": "Produtos e/ou Serviço", "total": 4000000, "vigentes": 1100000 } ]
+
+GET /stats/por-ano
+------------------
+Resposta:
+[
+  { "ano": 2020, "total": 180000, "concedidas": 90000, "vigentes": 85000 }
+]
+
+================================================================================
+OBSERVAÇÕES GERAIS
+================================================================================
+
+- Todos os endpoints de listagem aceitam ?formato=csv para exportar direto
+- Paginação padrão: page=1, limit=20 (máx 100)
+- Datas sempre no formato YYYY-MM-DD
+- Campos calculados presentes em todas as listagens:
+    vigente              boolean   true se data_vigencia > hoje
+    dias_para_vencer     integer   dias até o vencimento (negativo = vencida)
+    despacho_descricao   string    descrição oficial do código de despacho
+    despacho_categoria   string    categoria raw do despacho: deposito, exame, publicacao,
+                                   recurso, concessao, renovacao, extincao, nulidade, anotacao
+                                   ATENÇÃO: IPAS024 (Indeferimento) tem categoria='exame' —
+                                   use situacao_calculada para classificação correta
+    situacao_calculada   string    situação canônica calculada server-side, livre de
+                                   ambiguidades de categoria. Valores possíveis:
+                                     vigor      — registro concedido e vigente
+                                     analise    — em exame, publicado, depositado etc.
+                                     recurso    — aguardando recurso ou nulidade
+                                     indeferido — pedido indeferido (todos os códigos)
+                                     extinto    — extinto, caducado ou arquivado
+    classe_descricoes    array     nomes por extenso das classes Nice
+
+- Autenticação: se API_KEY estiver configurada no servidor, envie o header:
+    X-API-Key: <sua-chave>
+
+- CORS: origens aceitas configuradas via CORS_ORIGINS no servidor
+
+================================================================================
