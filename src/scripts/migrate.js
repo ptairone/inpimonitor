@@ -32,21 +32,36 @@ async function migrate() {
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
       console.log(`Executando ${file}...`);
 
+      // Separar statements CONCURRENTLY (não podem rodar dentro de transação)
+      const stmts = sql.split(/;(\s*\n)/).map(s => s.trim()).filter(Boolean);
+      const concurrent = stmts.filter(s => /CONCURRENTLY/i.test(s));
+      const normal = stmts.filter(s => !/CONCURRENTLY/i.test(s));
+
       await client.query('BEGIN');
       try {
-        await client.query(sql);
+        for (const stmt of normal) await client.query(stmt);
         await client.query(
           'INSERT INTO schema_migrations (filename) VALUES ($1)',
           [file]
         );
         await client.query('COMMIT');
-        console.log(`  OK`);
-        novas++;
       } catch (err) {
         await client.query('ROLLBACK');
         console.error(`  ERRO em ${file}:`, err.message);
         throw err;
       }
+
+      // Rodar CONCURRENTLY fora da transação
+      for (const stmt of concurrent) {
+        try {
+          await client.query(stmt);
+        } catch (err) {
+          console.error(`  AVISO CONCURRENTLY em ${file}:`, err.message);
+        }
+      }
+
+      console.log(`  OK`);
+      novas++;
     }
 
     if (novas === 0) {
