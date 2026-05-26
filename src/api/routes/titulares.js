@@ -89,11 +89,11 @@ router.get('/stats', cacheMiddleware(300), async (req, res) => {
         param
       ),
       pool.query(
-        `SELECT marcas.status, marcas.despacho_codigo, dc.categoria AS despacho_categoria,
+        `SELECT marcas.status, marcas.despacho_codigo, marcas.despacho_categoria,
                 COUNT(*) AS qtd
          ${FROM_MARCAS}
          WHERE marcas.titular ILIKE $1
-         GROUP BY marcas.status, marcas.despacho_codigo, dc.categoria
+         GROUP BY marcas.status, marcas.despacho_codigo, marcas.despacho_categoria
          ORDER BY qtd DESC`,
         param
       ),
