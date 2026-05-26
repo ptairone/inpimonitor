@@ -214,7 +214,7 @@ router.get('/processo/:numero', async (req, res) => {
         [numero]
       ),
       pool.query(
-        `SELECT hd.despacho_codigo, hd.despacho_texto, hd.numero_revista, hd.created_at,
+        `SELECT hd.despacho_codigo, hd.despacho_texto, hd.complemento, hd.numero_revista, hd.created_at,
                 dc2.descricao AS despacho_descricao
          FROM historico_despachos hd
          LEFT JOIN despacho_codigos dc2 ON dc2.codigo = hd.despacho_codigo
@@ -280,7 +280,7 @@ router.get('/:id', async (req, res) => {
         [id]
       ),
       pool.query(
-        `SELECT hd.despacho_codigo, hd.despacho_texto, hd.numero_revista, hd.created_at,
+        `SELECT hd.despacho_codigo, hd.despacho_texto, hd.complemento, hd.numero_revista, hd.created_at,
                 dc2.descricao AS despacho_descricao
          FROM historico_despachos hd
          LEFT JOIN despacho_codigos dc2 ON dc2.codigo = hd.despacho_codigo
