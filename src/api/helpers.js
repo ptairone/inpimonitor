@@ -7,41 +7,37 @@ const SORT_WHITELIST = {
   updated_at:     'marcas.updated_at',
 };
 
-// JOIN padrão usado em todos os SELECTs de marcas
-const FROM_MARCAS = `FROM marcas LEFT JOIN despacho_codigos dc ON dc.codigo = marcas.despacho_codigo`;
+const FROM_MARCAS = `FROM marcas`;
 
-// CASE que calcula a situação canônica server-side (elimina ambiguidade de categoria)
-// Indeferimento: despacho_codigo específico OR status text (fallback para códigos fora da tabela)
-// Arquivamento vai para 'extinto' (alinhado com Lovable)
+// situacao_calculada usa despacho_categoria (coluna desnormalizada — sem JOIN)
+// Prioridade: indeferido > extinto > recurso > vigor > analise
 const SITUACAO_CASE = `
   CASE
     WHEN marcas.despacho_codigo IN ('157','158','159','IPAS015','IPAS017','IPAS018','IPAS024')
          OR marcas.status ILIKE '%indefer%'
       THEN 'indeferido'
-    WHEN dc.categoria = 'extincao'
+    WHEN marcas.despacho_categoria = 'extincao'
          OR marcas.status ILIKE '%arquiv%'
          OR (marcas.data_vigencia IS NOT NULL
              AND marcas.data_vigencia <= CURRENT_DATE
              AND marcas.data_concessao IS NOT NULL)
       THEN 'extinto'
-    WHEN dc.categoria IN ('recurso','nulidade')
+    WHEN marcas.despacho_categoria IN ('recurso','nulidade')
       THEN 'recurso'
     WHEN marcas.data_vigencia IS NOT NULL
          AND marcas.data_vigencia > CURRENT_DATE
-         AND dc.categoria = 'concessao'
+         AND marcas.despacho_categoria = 'concessao'
       THEN 'vigor'
     ELSE 'analise'
   END`;
 
-// WHERE snippets para filtrar por situacao canônica sem depender de categoria
 const SITUACAO_WHERE = {
   indeferido: `(marcas.despacho_codigo IN ('157','158','159','IPAS015','IPAS017','IPAS018','IPAS024') OR marcas.status ILIKE '%indefer%')`,
-  extinto:    `(dc.categoria = 'extincao' OR marcas.status ILIKE '%arquiv%' OR (marcas.data_vigencia IS NOT NULL AND marcas.data_vigencia <= CURRENT_DATE AND marcas.data_concessao IS NOT NULL))`,
-  recurso:    `dc.categoria IN ('recurso','nulidade')`,
-  vigor:      `(marcas.data_vigencia IS NOT NULL AND marcas.data_vigencia > CURRENT_DATE AND dc.categoria = 'concessao')`,
+  extinto:    `(marcas.despacho_categoria = 'extincao' OR marcas.status ILIKE '%arquiv%' OR (marcas.data_vigencia IS NOT NULL AND marcas.data_vigencia <= CURRENT_DATE AND marcas.data_concessao IS NOT NULL))`,
+  recurso:    `marcas.despacho_categoria IN ('recurso','nulidade')`,
+  vigor:      `(marcas.data_vigencia IS NOT NULL AND marcas.data_vigencia > CURRENT_DATE AND marcas.despacho_categoria = 'concessao')`,
 };
 
-// Campos para listagens (JOIN com dc já incluso via FROM_MARCAS)
 const LIST_FIELDS = `
   marcas.id, marcas.numero_processo, marcas.nome_marca, marcas.titular, marcas.pais, marcas.uf,
   marcas.classe_nice,
@@ -52,8 +48,8 @@ const LIST_FIELDS = `
     ORDER BY u.idx
   ) END AS classe_descricoes,
   marcas.status, marcas.despacho_codigo,
-  dc.descricao  AS despacho_descricao,
-  dc.categoria  AS despacho_categoria,
+  marcas.despacho_descricao,
+  marcas.despacho_categoria,
   marcas.data_deposito, marcas.data_concessao, marcas.data_vigencia,
   marcas.tipo_marca, marcas.natureza, marcas.procurador, marcas.numero_revista,
   marcas.updated_at,
@@ -64,7 +60,6 @@ const LIST_FIELDS = `
   ${SITUACAO_CASE} AS situacao_calculada
 `;
 
-// Campos para endpoints de detalhe (registro completo)
 const DETAIL_FIELDS = `
   marcas.id, marcas.numero_processo, marcas.nome_marca, marcas.titular, marcas.pais, marcas.uf,
   marcas.classe_nice,
@@ -76,8 +71,8 @@ const DETAIL_FIELDS = `
   ) END AS classe_descricoes,
   marcas.especificacao_nice, marcas.classe_vienna,
   marcas.status, marcas.despacho_codigo,
-  dc.descricao  AS despacho_descricao,
-  dc.categoria  AS despacho_categoria,
+  marcas.despacho_descricao,
+  marcas.despacho_categoria,
   marcas.data_deposito, marcas.data_concessao, marcas.data_vigencia,
   marcas.tipo_marca, marcas.natureza, marcas.procurador, marcas.numero_revista,
   marcas.created_at, marcas.updated_at,

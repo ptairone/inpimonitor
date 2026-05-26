@@ -19,7 +19,7 @@ router.get('/resumo', cacheMiddleware(300), async (req, res) => {
           AND procurador != '')                                        AS total_procuradores,
         MIN(numero_revista)                                            AS revista_mais_antiga,
         MAX(numero_revista)                                            AS revista_mais_recente,
-        MIN(data_deposito)                                             AS deposito_mais_antigo,
+        MIN(data_deposito) FILTER (WHERE data_deposito > '1900-01-01') AS deposito_mais_antigo,
         MAX(data_deposito)                                             AS deposito_mais_recente,
         (SELECT COUNT(*) FROM historico_despachos)                     AS total_historico_despachos
       FROM marcas

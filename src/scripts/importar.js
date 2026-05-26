@@ -154,6 +154,18 @@ async function upsertBatch(client, batch) {
     params
   );
 
+  // Sincroniza despacho_categoria e despacho_descricao para o batch recém inserido/atualizado
+  const processosBatch = batch.map((r) => r.numero_processo);
+  await client.query(
+    `UPDATE marcas m
+     SET despacho_categoria = dc.categoria,
+         despacho_descricao  = dc.descricao
+     FROM despacho_codigos dc
+     WHERE dc.codigo = m.despacho_codigo
+       AND m.numero_processo = ANY($1)`,
+    [processosBatch]
+  );
+
   await upsertHistoricoBatch(client, batch);
 }
 
