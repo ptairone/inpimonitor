@@ -82,7 +82,7 @@ router.get('/buscar', searchLimiter, async (req, res) => {
     if (natureza)           add(`marcas.natureza ILIKE ?`,          `%${natureza}%`);
     if (procurador)         add(`marcas.procurador ILIKE ?`,        `%${procurador}%`);
     if (despacho_codigo)    add(`marcas.despacho_codigo = ?`,       despacho_codigo.trim());
-    if (despacho_categoria) add(`dc.categoria = ?`,                 despacho_categoria.trim());
+    if (despacho_categoria) add(`marcas.despacho_categoria = ?`,    despacho_categoria.trim());
     if (numero_revista)     add(`marcas.numero_revista = ?`,        parseInt10(numero_revista, null));
 
     // Filtro por situação canônica (agrupa todos os códigos de indeferimento, extinção etc.)
@@ -302,7 +302,9 @@ router.get('/:id', async (req, res) => {
     );
 
     if (peticoesResult.rows.length === 0) {
-      fetchPeticoes(marca.numero_processo).catch(() => {});
+      fetchPeticoes(marca.numero_processo).catch((err) =>
+        console.error(`[marcas] Erro ao buscar petições ${marca.numero_processo}:`, err.message)
+      );
     }
 
     res.json({

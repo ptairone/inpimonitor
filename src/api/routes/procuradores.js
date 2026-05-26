@@ -121,13 +121,7 @@ router.get('/buscar', cacheMiddleware(120), async (req, res) => {
     const offset = (page - 1) * limit;
 
     const params = [`%${nome}%`];
-    const conditions = [
-      `marcas.numero_processo IN (
-        SELECT DISTINCT numero_processo FROM historico_despachos WHERE procurador ILIKE $1
-        UNION
-        SELECT numero_processo FROM marcas WHERE procurador ILIKE $1
-      )`,
-    ];
+    const conditions = [`marcas.procurador ILIKE $1`];
 
     if (uf)             { params.push(uf);                          conditions.push(`marcas.uf ILIKE $${params.length}`); }
     if (pais)           { params.push(pais);                        conditions.push(`marcas.pais ILIKE $${params.length}`); }

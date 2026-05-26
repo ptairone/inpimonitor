@@ -120,14 +120,13 @@ router.get('/por-status', cacheMiddleware(300), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        m.despacho_codigo,
-        dc.descricao AS despacho_descricao,
-        dc.categoria AS despacho_categoria,
+        despacho_codigo,
+        despacho_descricao,
+        despacho_categoria,
         COUNT(*) AS total
-      FROM marcas m
-      LEFT JOIN despacho_codigos dc ON dc.codigo = m.despacho_codigo
-      WHERE m.despacho_codigo IS NOT NULL
-      GROUP BY m.despacho_codigo, dc.descricao, dc.categoria
+      FROM marcas
+      WHERE despacho_codigo IS NOT NULL
+      GROUP BY despacho_codigo, despacho_descricao, despacho_categoria
       ORDER BY total DESC
       LIMIT 100
     `);

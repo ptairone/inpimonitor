@@ -1,6 +1,6 @@
 const NodeCache = require('node-cache');
 
-const store = new NodeCache({ useClones: false });
+const store = new NodeCache({ useClones: false, maxKeys: 2000 });
 
 function cacheMiddleware(ttlSeconds) {
   return (req, res, next) => {

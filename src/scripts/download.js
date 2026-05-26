@@ -23,7 +23,7 @@ function formatNumero(n) {
 
 async function getRevistasJaBaixadas() {
   const result = await pool.query(
-    'SELECT numero_revista FROM revistas_controle WHERE baixado = TRUE'
+    'SELECT numero_revista FROM revistas_controle'
   );
   return new Set(result.rows.map((r) => r.numero_revista));
 }
@@ -62,7 +62,7 @@ async function marcarBaixada(numero, totalRegistros) {
   );
 }
 
-async function downloadRevista(numero) {
+async function downloadRevista(numero, tentativa = 1) {
   const numStr = formatNumero(numero);
   const url = `${BASE_URL}/RM${numStr}.zip`;
   const xmlPath = path.join(DATA_PATH, `RM${numStr}.xml`);
@@ -77,12 +77,21 @@ async function downloadRevista(numero) {
     return (txt.match(/^No\./gm) || []).length;
   }
 
-  const response = await axios.get(url, {
-    responseType: 'arraybuffer',
-    timeout: 120000,
-    validateStatus: (status) => status < 500,
-    maxRedirects: 5,
-  });
+  let response;
+  try {
+    response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 120000,
+      validateStatus: (status) => status < 500,
+      maxRedirects: 5,
+    });
+  } catch (err) {
+    if (tentativa < 3) {
+      await sleep(2000 * tentativa);
+      return downloadRevista(numero, tentativa + 1);
+    }
+    throw err;
+  }
 
   if (response.status === 404) return null;
   if (response.status !== 200) throw new Error(`HTTP ${response.status}`);

@@ -156,7 +156,7 @@ async function salvarPeticoes(numeroProcesso, peticoes) {
          servico = EXCLUDED.servico, cliente = EXCLUDED.cliente,
          data_delivery = EXCLUDED.data_delivery`,
       [numeroProcesso, p.protocolo, p.data_peticao, p.servico, p.cliente, p.numero_img, p.data_delivery]
-    ).catch(() => {});
+    ).catch((err) => console.error(`[imagens] Erro ao salvar petição ${p.protocolo}:`, err.message));
   }
 }
 
@@ -175,7 +175,7 @@ async function fetchImagem(numeroProcesso) {
   await pool.query(
     'UPDATE marcas SET inpi_cod_pedido = $1 WHERE numero_processo = $2',
     [codPedido, numeroProcesso]
-  ).catch(() => {});
+  ).catch((err) => console.error(`[imagens] Erro ao salvar cod_pedido ${codPedido}:`, err.message));
 
   // Acessar detalhe (com sessão preparada pela busca) e extrair petições
   const { html, cookies: c3 } = await acessarDetalhe(cookies, codPedido);

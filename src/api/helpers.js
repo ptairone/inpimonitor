@@ -122,7 +122,7 @@ function toCsv(rows) {
   for (const row of rows) {
     lines.push(headers.map((h) => escape(row[h])).join(','));
   }
-  return lines.join('\r\n');
+  return '﻿' + lines.join('\r\n');
 }
 
 module.exports = {

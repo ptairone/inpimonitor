@@ -7,9 +7,9 @@ const pool = new Pool({
   database: process.env.DB_NAME || 'inpi',
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  max: parseInt(process.env.DB_POOL_MAX) || 20,
+  idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT) || 60000,
+  connectionTimeoutMillis: parseInt(process.env.DB_CONN_TIMEOUT) || 10000,
 });
 
 pool.on('error', (err) => {
