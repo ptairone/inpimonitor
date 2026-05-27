@@ -45,15 +45,22 @@ function extrairProcesso(proc, numeroRevista) {
   const despacho = despachos[0] || {};
   const despachoNome = extrairTexto(despacho['@_nome']);
   const despachoCodigo = extrairTexto(despacho['@_codigo']);
-  // <complemento> contém o texto livre do despacho: motivos de indeferimento,
-  // texto da exigência, quem protocolou oposição, condições de concessão, etc.
-  const despachoComplemento = extrairTexto(despacho.complemento);
+  // <texto-complementar> (revistas XML modernas) ou <complemento> (formato antigo TXT)
+  // contém o texto livre do despacho: motivos de indeferimento, exigências, oposições, etc.
+  const despachoComplemento =
+    extrairTexto(despacho['texto-complementar']) || extrairTexto(despacho.complemento);
 
   const todosDespachos = despachos.map((d) => ({
     codigo: extrairTexto(d['@_codigo']) || '',
     texto: extrairTexto(d['@_nome']),
-    complemento: extrairTexto(d.complemento),
+    complemento: extrairTexto(d['texto-complementar']) || extrairTexto(d.complemento),
   }));
+
+  // Processos que estão sobrestando este pedido (colisão de marca)
+  const sobrestadores = (proc.sobrestadores?.sobrestador || []).map((s) => ({
+    processo: extrairTexto(s['@_processo']),
+    marca: extrairTexto(s['@_marca']),
+  })).filter((s) => s.processo);
 
   const titulares = proc.titulares?.titular || [];
   const titular =
@@ -101,6 +108,7 @@ function extrairProcesso(proc, numeroRevista) {
     despacho_codigo: despachoCodigo,
     despacho_complemento: despachoComplemento,
     inpi_cod_pedido: inpiCodPedido,
+    sobrestadores: sobrestadores.length ? sobrestadores : null,
     data_deposito: dataDeposito,
     data_concessao: dataConcessao,
     data_vigencia: dataVigencia,
@@ -115,11 +123,11 @@ function extrairProcesso(proc, numeroRevista) {
 async function upsertBatch(client, batch) {
   if (batch.length === 0) return;
 
-  const COLS = 19;
+  const COLS = 20;
   const placeholders = batch
     .map((_, i) => {
       const b = i * COLS;
-      return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15},$${b+16},$${b+17},$${b+18},$${b+19})`;
+      return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15},$${b+16},$${b+17},$${b+18},$${b+19},$${b+20})`;
     })
     .join(',');
 
@@ -133,7 +141,8 @@ async function upsertBatch(client, batch) {
       r.especificacao_nice ? JSON.stringify(r.especificacao_nice) : null,
       r.classe_vienna,
       r.despacho_complemento,
-      r.inpi_cod_pedido
+      r.inpi_cod_pedido,
+      r.sobrestadores ? JSON.stringify(r.sobrestadores) : null
     );
   }
 
@@ -142,7 +151,7 @@ async function upsertBatch(client, batch) {
        numero_processo, nome_marca, titular, pais, uf, classe_nice,
        status, despacho_codigo, data_deposito, data_concessao, data_vigencia,
        tipo_marca, natureza, procurador, numero_revista,
-       especificacao_nice, classe_vienna, despacho_complemento, inpi_cod_pedido
+       especificacao_nice, classe_vienna, despacho_complemento, inpi_cod_pedido, sobrestadores
      ) VALUES ${placeholders}
      ON CONFLICT (numero_processo) DO UPDATE SET
        titular              = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.titular              ELSE marcas.titular END,
@@ -154,6 +163,7 @@ async function upsertBatch(client, batch) {
        status               = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.status               ELSE marcas.status END,
        despacho_codigo      = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.despacho_codigo      ELSE marcas.despacho_codigo END,
        despacho_complemento = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.despacho_complemento ELSE marcas.despacho_complemento END,
+       sobrestadores        = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.sobrestadores, marcas.sobrestadores) ELSE marcas.sobrestadores END,
        data_concessao       = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.data_concessao, marcas.data_concessao) ELSE marcas.data_concessao END,
        data_vigencia        = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.data_vigencia,  marcas.data_vigencia)  ELSE marcas.data_vigencia END,
        procurador           = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.procurador,     marcas.procurador)     ELSE marcas.procurador END,

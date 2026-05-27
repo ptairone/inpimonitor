@@ -75,6 +75,7 @@ const DETAIL_FIELDS = `
   marcas.despacho_categoria,
   marcas.despacho_complemento,
   marcas.inpi_cod_pedido,
+  marcas.sobrestadores,
   marcas.data_deposito, marcas.data_concessao, marcas.data_vigencia,
   marcas.tipo_marca, marcas.natureza, marcas.procurador, marcas.numero_revista,
   marcas.created_at, marcas.updated_at,
