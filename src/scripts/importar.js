@@ -79,6 +79,7 @@ function extrairProcesso(proc, numeroRevista) {
   const natureza = extrairTexto(marca['@_natureza']);
 
   const listaClasse = proc['lista-classe-nice']?.['classe-nice'] || [];
+  // null quando vazio — array vazio [] quebraria o COALESCE no upsert
   const classeNice = listaClasse.map((c) => extrairTexto(c['@_codigo'])).filter(Boolean);
 
   // Especificação por classe Nice: { "43": "Aluguel de acomodações..." }
@@ -101,7 +102,7 @@ function extrairProcesso(proc, numeroRevista) {
     titular,
     pais,
     uf,
-    classe_nice: classeNice,
+    classe_nice: classeNice.length ? classeNice : null,
     especificacao_nice: Object.keys(especificacaoNice).length ? especificacaoNice : null,
     classe_vienna: classeViena.length ? classeViena : null,
     status: despachoNome,
@@ -154,10 +155,10 @@ async function upsertBatch(client, batch) {
        especificacao_nice, classe_vienna, despacho_complemento, inpi_cod_pedido, sobrestadores
      ) VALUES ${placeholders}
      ON CONFLICT (numero_processo) DO UPDATE SET
-       titular              = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.titular              ELSE marcas.titular END,
+       titular              = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.titular, marcas.titular) ELSE marcas.titular END,
        pais                 = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.pais                 ELSE marcas.pais END,
        uf                   = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.uf                   ELSE marcas.uf END,
-       classe_nice          = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.classe_nice          ELSE marcas.classe_nice END,
+       classe_nice          = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.classe_nice, marcas.classe_nice) ELSE marcas.classe_nice END,
        especificacao_nice   = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.especificacao_nice, marcas.especificacao_nice)  ELSE marcas.especificacao_nice END,
        classe_vienna        = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.classe_vienna,      marcas.classe_vienna)       ELSE marcas.classe_vienna END,
        status               = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.status               ELSE marcas.status END,
