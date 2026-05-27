@@ -156,8 +156,8 @@ async function upsertBatch(client, batch) {
      ) VALUES ${placeholders}
      ON CONFLICT (numero_processo) DO UPDATE SET
        titular              = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.titular, marcas.titular) ELSE marcas.titular END,
-       pais                 = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.pais                 ELSE marcas.pais END,
-       uf                   = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN EXCLUDED.uf                   ELSE marcas.uf END,
+       pais                 = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.pais, marcas.pais) ELSE marcas.pais END,
+       uf                   = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.uf,   marcas.uf)   ELSE marcas.uf END,
        classe_nice          = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.classe_nice, marcas.classe_nice) ELSE marcas.classe_nice END,
        especificacao_nice   = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.especificacao_nice, marcas.especificacao_nice)  ELSE marcas.especificacao_nice END,
        classe_vienna        = CASE WHEN EXCLUDED.numero_revista >= marcas.numero_revista THEN COALESCE(EXCLUDED.classe_vienna,      marcas.classe_vienna)       ELSE marcas.classe_vienna END,
