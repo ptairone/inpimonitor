@@ -1,8 +1,7 @@
 -- Busca por nome normalizado: remove espaços, acentos, hífens, pontos
 -- Permite encontrar "Win contábil" buscando "wincont", igual ao sistema do INPI
 
-CREATE EXTENSION IF NOT EXISTS unaccent;
-
+-- unaccent ja instalada (migration 003 via pg_trgm setup)
 ALTER TABLE marcas ADD COLUMN IF NOT EXISTS nome_normalizado TEXT;
 
 -- Função de normalização: lowercase + unaccent + remove separadores
