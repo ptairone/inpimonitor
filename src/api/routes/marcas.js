@@ -24,13 +24,14 @@ router.get('/autocomplete', searchLimiter, cacheMiddleware(60), async (req, res)
     const { q } = req.query;
     if (!q || q.trim().length < 2) return res.json([]);
 
+    const norm = q.trim().toLowerCase().replace(/[\s\-\.\,\/\(\)&']+/g, '');
     const result = await pool.query(
       `SELECT DISTINCT nome_marca
        FROM marcas
-       WHERE nome_marca ILIKE $1 AND nome_marca IS NOT NULL
+       WHERE (nome_marca ILIKE $1 OR nome_normalizado ILIKE $2) AND nome_marca IS NOT NULL
        ORDER BY nome_marca
        LIMIT 15`,
-      [`${q.trim()}%`]
+      [`${q.trim()}%`, `%${norm}%`]
     );
     res.json(result.rows.map((r) => r.nome_marca));
   } catch (err) {
@@ -49,7 +50,7 @@ router.get('/buscar', searchLimiter, async (req, res) => {
       concessao_de, concessao_ate,
       vigencia_de, vigencia_ate,
       sort_by, sort_order, sem_contagem, vigente,
-      numero_revista,
+      numero_revista, nome_normalizado,
     } = req.query;
 
     const isFuzzy = fuzzy === 'true' && !!nome;
@@ -61,17 +62,38 @@ router.get('/buscar', searchLimiter, async (req, res) => {
     const conditions = [];
     const params = [];
     let fuzzyNomeIdx = null;
+    let nomeNormIdx = null;
 
     const add = (condition, value) => {
       params.push(value);
       conditions.push(condition.replace('?', `$${params.length}`));
     };
 
-    if (nome && !isFuzzy) add(`marcas.search_vector @@ websearch_to_tsquery('portuguese', ?)`, nome);
+    // Normaliza string removendo espaços, acentos e separadores (igual ao INPI)
+    const normalizarBusca = (s) =>
+      s.toLowerCase().replace(/[\s\-\.\,\/\(\)&']+/g, '');
+
+    if (nome && !isFuzzy) {
+      // Full-text search para palavras separadas
+      params.push(nome);
+      const idxFt = params.length;
+      // Busca normalizada: "wincont" encontra "Win contábil", "Win Contab", etc.
+      const normQuery = normalizarBusca(nome);
+      params.push(`%${normQuery}%`);
+      nomeNormIdx = params.length;
+      conditions.push(
+        `(marcas.search_vector @@ websearch_to_tsquery('portuguese', $${idxFt}) OR marcas.nome_normalizado ILIKE $${nomeNormIdx})`
+      );
+    }
     if (isFuzzy) {
       params.push(nome);
       fuzzyNomeIdx = params.length;
       conditions.push(`similarity(marcas.nome_marca, $${fuzzyNomeIdx}) > 0.2`);
+    }
+    // Parâmetro standalone para busca exclusivamente por nome normalizado
+    if (nome_normalizado && !nome) {
+      const norm = normalizarBusca(nome_normalizado);
+      if (norm.length >= 2) add(`marcas.nome_normalizado ILIKE ?`, `%${norm}%`);
     }
     if (titular)            add(`marcas.titular ILIKE ?`,          `%${titular}%`);
     if (processo)           add(`marcas.numero_processo = ?`,       processo.trim());
@@ -111,7 +133,10 @@ router.get('/buscar', searchLimiter, async (req, res) => {
       return res.status(400).json({
         error: 'Informe ao menos um parâmetro de busca',
         parametros: [
-          'nome', 'titular', 'processo',
+          'nome — busca por full-text + substring normalizado (remove espaços/acentos, igual ao INPI)',
+          'nome_normalizado — busca exclusivamente por substring normalizado',
+          'fuzzy=true — busca aproximada por similaridade (com nome)',
+          'titular', 'processo',
           'classe (valor único ou separados por vírgula: 01,30)',
           'status', 'vigente (true|false)',
           'uf', 'pais', 'tipo', 'natureza', 'procurador',
@@ -144,8 +169,9 @@ router.get('/buscar', searchLimiter, async (req, res) => {
     if (isFuzzy && !sort_by) {
       orderBy = `similarity(marcas.nome_marca, $${fuzzyNomeIdx}) DESC`;
     } else if (nome && !sort_by && !isFuzzy) {
+      // Ordena por full-text rank; quem bate no full-text aparece primeiro
       params.push(nome);
-      orderBy = `ts_rank(marcas.search_vector, websearch_to_tsquery('portuguese', $${params.length})) DESC`;
+      orderBy = `ts_rank(marcas.search_vector, websearch_to_tsquery('portuguese', $${params.length})) DESC, marcas.data_concessao DESC NULLS LAST`;
     } else {
       orderBy = buildSort(sort_by, sort_order, 'marcas.data_concessao DESC NULLS LAST');
     }
