@@ -3,6 +3,33 @@ const fs = require('fs');
 const path = require('path');
 const pool = require('../config/database');
 
+// Divide SQL em statements respeitando dollar-quoting ($$, $body$, $func$, etc.)
+function splitSql(sql) {
+  const stmts = [];
+  let cur = '';
+  let inDollar = false;
+  let tag = '';
+  let i = 0;
+  while (i < sql.length) {
+    if (!inDollar && sql[i] === '$') {
+      const m = sql.slice(i).match(/^\$([A-Za-z_]*)\$/);
+      if (m) { tag = m[0]; inDollar = true; cur += tag; i += tag.length; continue; }
+    }
+    if (inDollar && sql.slice(i).startsWith(tag)) {
+      cur += tag; i += tag.length; inDollar = false; tag = ''; continue;
+    }
+    if (!inDollar && sql[i] === ';') {
+      const stmt = cur.trim();
+      if (stmt) stmts.push(stmt);
+      cur = ''; i++; continue;
+    }
+    cur += sql[i]; i++;
+  }
+  const last = cur.trim();
+  if (last) stmts.push(last);
+  return stmts.filter(Boolean);
+}
+
 async function migrate() {
   const client = await pool.connect();
   try {
@@ -32,8 +59,8 @@ async function migrate() {
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
       console.log(`Executando ${file}...`);
 
-      // Separar statements CONCURRENTLY (não podem rodar dentro de transação)
-      const stmts = sql.split(/;(\s*\n)/).map(s => s.trim()).filter(Boolean);
+      // Separar statements respeitando dollar-quoting ($$...$$, $body$...$body$, etc.)
+      const stmts = splitSql(sql);
       const concurrent = stmts.filter(s => /CONCURRENTLY/i.test(s));
       const normal = stmts.filter(s => !/CONCURRENTLY/i.test(s));
 
