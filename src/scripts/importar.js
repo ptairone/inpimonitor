@@ -271,4 +271,38 @@ async function importarRevista(xmlPath, numero) {
   return importados;
 }
 
-module.exports = { importarRevista };
+async function importarRegistros(registros, numero) {
+  const client = await pool.connect();
+  let importados = 0;
+  try {
+    await client.query('BEGIN');
+
+    for (let i = 0; i < registros.length; i += BATCH_SIZE) {
+      const batch = registros.slice(i, i + BATCH_SIZE);
+      await upsertBatch(client, batch);
+      importados += batch.length;
+    }
+
+    await client.query(
+      `INSERT INTO revistas_controle (numero_revista, baixado, importado, data_download, data_importacao, total_registros)
+       VALUES ($1, TRUE, TRUE, NOW(), NOW(), $2)
+       ON CONFLICT (numero_revista) DO UPDATE
+         SET baixado = TRUE,
+             importado = TRUE,
+             data_importacao = NOW(),
+             total_registros = $2`,
+      [numero, importados]
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  return importados;
+}
+
+module.exports = { importarRevista, importarRegistros };

@@ -6,7 +6,10 @@
   "scripts": {
     "migrate": "node src/scripts/migrate.js",
     "download": "node src/scripts/download.js",
+    "download:pdf": "node src/scripts/download-pdf.js",
     "import": "node src/scripts/import.js",
+    "extract:pdf": "python src/scripts/extrair-pdf.py",
+    "import:pdf": "node src/scripts/import-pdf.js",
     "import:txt": "node src/scripts/import-txt.js",
     "sync": "node src/scripts/sync.js",
     "start": "node src/api/server.js",

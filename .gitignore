@@ -1,5 +1,13 @@
 node_modules/
 .env
 data/xmls/
+data/pdfs/
+data/*.jsonl
+data/*.csv
+Marcas*.pdf
 *.zip
 *.log
+ssh_*.py
+.claude/
+teste.png
+teste_marca.jpg
