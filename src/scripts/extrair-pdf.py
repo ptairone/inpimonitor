@@ -38,17 +38,27 @@ SECTION_HEADINGS = {
     "Em vista do cumprimento insatisfatório de exigência formal",
 }
 
+def label_re(label_text, tail=r":\s*(.*)$"):
+    """Constroi um regex tolerante a espacos extras/faltantes entre QUALQUER
+    par de caracteres do rotulo. O PyMuPDF, para esta fonte, insere ou
+    omite espacos de forma inconsistente dentro das proprias palavras do
+    rotulo (ex.: "Elementonominativo" ou "Esp ecificação"), então casar
+    o texto literal com espacos fixos nao e confiavel."""
+    parts = [re.escape(ch) + r"\s*" for ch in label_text if not ch.isspace()]
+    return re.compile(r"^" + "".join(parts) + tail, re.I)
+
+
 LABELS = [
-    ("titular", re.compile(r"^Titular(?:\(es\))?:\s*(.*)$", re.I)),
-    ("procurador", re.compile(r"^Procurador:\s*(.*)$", re.I)),
-    ("data_deposito", re.compile(r"^Data de depósito:\s*(.*)$", re.I)),
-    ("tipo_marca", re.compile(r"^Apresentação:\s*(.*)$", re.I)),
-    ("natureza", re.compile(r"^Natureza:\s*(.*)$", re.I)),
-    ("nome_marca", re.compile(r"^Elemento nominativo:\s*(.*)$", re.I)),
-    ("classe_vienna", re.compile(r"^CFE:\s*(.*)$", re.I)),
-    ("classe_nice", re.compile(r"^NCL\(\d+\):\s*(.*)$", re.I)),
-    ("especificacao", re.compile(r"^Especificação:\s*(.*)$", re.I)),
-    ("despacho_complemento", re.compile(r"^Detalhes do despacho:\s*(.*)$", re.I)),
+    ("titular", re.compile(r"^Titular(?:\s*\(\s*es\s*\))?:\s*(.*)$", re.I)),
+    ("procurador", label_re("Procurador")),
+    ("data_deposito", label_re("Data de depósito")),
+    ("tipo_marca", label_re("Apresentação")),
+    ("natureza", label_re("Natureza")),
+    ("nome_marca", label_re("Elemento nominativo")),
+    ("classe_vienna", label_re("CFE")),
+    ("classe_nice", re.compile(r"^NCL\s*\(\s*\d*\s*\)\s*:\s*(.*)$", re.I)),
+    ("especificacao", label_re("Especificação")),
+    ("despacho_complemento", label_re("Detalhes do despacho")),
 ]
 
 
@@ -78,6 +88,22 @@ def split_nice(valor):
 def split_vienna(valor):
     valor = (valor or "").replace(" e ", ", ")
     return re.findall(r"\d+(?:\.\d+)+", valor)
+
+
+NOME_MARCA_CUT_RE = re.compile(r"\s*NCL\s*\(.*", re.I)
+
+
+def limpar_nome_marca(valor):
+    """Madri/designações internacionais às vezes ficam numa única linha de
+    PDF (Elemento nominativo + NCL + Especificação colados); corta no NCL e
+    aplica um teto de tamanho para nao quebrar o indice btree de nome_marca."""
+    valor = limpar_texto(valor)
+    if not valor:
+        return None
+    valor = NOME_MARCA_CUT_RE.split(valor, maxsplit=1)[0].strip()
+    if len(valor) > 300:
+        valor = valor[:300].strip()
+    return valor or None
 
 
 def parse_titular(valor):
@@ -180,7 +206,7 @@ def parse_record(processo, status, block_lines, page, numero_revista):
 
     record = {
         "numero_processo": processo,
-        "nome_marca": limpar_texto(fields.get("nome_marca")),
+        "nome_marca": limpar_nome_marca(fields.get("nome_marca")),
         "titular": titular,
         "pais": pais,
         "uf": uf,
