@@ -255,7 +255,7 @@ async function importarRevista(xmlPath, numero) {
 
     await client.query(
       `UPDATE revistas_controle
-       SET importado = TRUE, data_importacao = NOW(), total_registros = $1
+       SET importado = TRUE, data_importacao = NOW(), total_registros = $1, fonte = 'xml'
        WHERE numero_revista = $2`,
       [importados, numero]
     );
@@ -284,13 +284,14 @@ async function importarRegistros(registros, numero) {
     }
 
     await client.query(
-      `INSERT INTO revistas_controle (numero_revista, baixado, importado, data_download, data_importacao, total_registros)
-       VALUES ($1, TRUE, TRUE, NOW(), NOW(), $2)
+      `INSERT INTO revistas_controle (numero_revista, baixado, importado, data_download, data_importacao, total_registros, fonte)
+       VALUES ($1, TRUE, TRUE, NOW(), NOW(), $2, 'pdf')
        ON CONFLICT (numero_revista) DO UPDATE
          SET baixado = TRUE,
              importado = TRUE,
              data_importacao = NOW(),
-             total_registros = $2`,
+             total_registros = $2,
+             fonte = 'pdf'`,
       [numero, importados]
     );
 

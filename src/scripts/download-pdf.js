@@ -78,7 +78,11 @@ async function main() {
   await baixarPdf(numero);
 }
 
-main().catch((err) => {
-  console.error('Erro ao baixar PDF:', err.message);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('Erro ao baixar PDF:', err.message);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { baixarPdf, getPdfUrl };

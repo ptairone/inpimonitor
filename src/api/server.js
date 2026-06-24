@@ -6,7 +6,10 @@ const axios = require('axios');
 const AdmZip = require('adm-zip');
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const pool = require('../config/database');
+const { importarRevista } = require('../scripts/importar');
+const { baixarPdf } = require('../scripts/download-pdf');
 const { globalLimiter, searchLimiter } = require('./middleware/rateLimit');
 const { invalidatePrefix } = require('./middleware/cache');
 const apiKeyMiddleware    = require('./middleware/apiKey');
@@ -96,68 +99,130 @@ cron.schedule('0 8 * * *', async () => {
   }
 });
 
-// Cron: toda terça-feira às 10h verifica nova edição
-cron.schedule('0 10 * * 2', async () => {
-  console.log('[CRON] Verificando nova edição do INPI...');
-  try {
-    const result = await pool.query(
-      'SELECT MAX(numero_revista) AS max FROM revistas_controle WHERE baixado = TRUE'
-    );
-    const ultimaRevista = parseInt(result.rows[0].max, 10) || 0;
-    const proxima = ultimaRevista + 1;
-    const numStr = String(proxima).padStart(4, '0');
-    const url = `https://revistas.inpi.gov.br/txt/RM${numStr}.zip`;
+const PDF_DATA_PATH = process.env.PDF_DATA_PATH
+  ? path.resolve(process.env.PDF_DATA_PATH)
+  : path.join(__dirname, '../../data/pdfs');
 
-    const response = await axios.get(url, {
+function invalidarCachesDeRevista() {
+  invalidatePrefix('/stats');
+  invalidatePrefix('/classes');
+  invalidatePrefix('/titulares');
+  invalidatePrefix('/procuradores');
+}
+
+// Baixa e valida o ZIP/XML real do INPI. Retorna o caminho do .xml salvo em disco,
+// ou null se a revista ainda não foi publicada nesse formato (o INPI redireciona
+// revista inexistente para uma página de erro com HTTP 200, por isso checamos os
+// magic bytes do ZIP, não só o status).
+async function baixarXmlReal(numero) {
+  const numStr = String(numero).padStart(4, '0');
+  const url = `https://revistas.inpi.gov.br/txt/RM${numStr}.zip`;
+
+  let response;
+  try {
+    response = await axios.get(url, {
       responseType: 'arraybuffer',
       timeout: 120000,
       validateStatus: (s) => s < 500,
+      maxRedirects: 5,
     });
+  } catch {
+    return null;
+  }
+  if (response.status !== 200) return null;
 
-    if (response.status === 404) {
-      console.log(`[CRON] RM${numStr} ainda não disponível.`);
-      return;
-    }
+  const buf = Buffer.from(response.data);
+  if (buf.length < 4 || buf[0] !== 0x50 || buf[1] !== 0x4b) return null; // magic bytes PK
 
-    if (response.status !== 200) {
-      console.log(`[CRON] RM${numStr} retornou HTTP ${response.status}.`);
-      return;
-    }
+  const zip = new AdmZip(buf);
+  const entry = zip.getEntries().find((e) => e.name.toLowerCase().endsWith('.xml'));
+  if (!entry) return null;
 
-    if (!fs.existsSync(DATA_PATH)) fs.mkdirSync(DATA_PATH, { recursive: true });
+  if (!fs.existsSync(DATA_PATH)) fs.mkdirSync(DATA_PATH, { recursive: true });
+  const xmlPath = path.join(DATA_PATH, `RM${numStr}.xml`);
+  fs.writeFileSync(xmlPath, entry.getData().toString('utf8'), 'utf8');
+  return xmlPath;
+}
 
-    const zip = new AdmZip(Buffer.from(response.data));
-    const entries = zip.getEntries().filter((e) => e.name.toLowerCase().endsWith('.xml'));
-    if (entries.length === 0) {
-      console.log(`[CRON] RM${numStr}: nenhum XML encontrado no ZIP.`);
-      return;
-    }
+// Revistas que entraram provisoriamente via PDF (extração lossy, ver memória do
+// projeto): reverifica se o XML definitivo já saiu e, se sim, descarta os dados
+// do PDF e reimporta do XML completo.
+async function promoverRevistasPdfParaXml() {
+  const { rows } = await pool.query(
+    `SELECT numero_revista FROM revistas_controle WHERE fonte = 'pdf' ORDER BY numero_revista`
+  );
 
-    const xmlContent = entries[0].getData().toString('utf8');
-    const xmlPath = path.join(DATA_PATH, `RM${numStr}.xml`);
-    fs.writeFileSync(xmlPath, xmlContent, 'utf8');
+  for (const { numero_revista: numero } of rows) {
+    const xmlPath = await baixarXmlReal(numero);
+    if (!xmlPath) continue;
 
-    const count = (xmlContent.match(/<processo /g) || []).length;
+    console.log(`[CRON] RM${numero}: XML saiu, substituindo importação provisória do PDF...`);
+    await pool.query('DELETE FROM historico_despachos WHERE numero_revista = $1', [numero]);
+    await pool.query('DELETE FROM marcas WHERE numero_revista = $1', [numero]);
+    const importados = await importarRevista(xmlPath, numero);
+    console.log(`[CRON] RM${numero}: ${importados} registros reimportados do XML.`);
+    invalidarCachesDeRevista();
+  }
+}
 
-    await pool.query(
-      `INSERT INTO revistas_controle (numero_revista, baixado, data_download, total_registros)
-       VALUES ($1, TRUE, NOW(), $2)
-       ON CONFLICT (numero_revista) DO UPDATE
-         SET baixado = TRUE, data_download = NOW(), total_registros = $2`,
-      [proxima, count]
-    );
+// Próxima revista nunca importada: prefere XML; se ainda não saiu, usa o PDF como
+// importação provisória (fonte='pdf'), que promoverRevistasPdfParaXml() substitui
+// pelo XML completo assim que ele for publicado (algumas horas depois, no mesmo dia).
+async function importarProximaEdicao() {
+  const result = await pool.query(
+    `SELECT COALESCE(MAX(numero_revista), 0) AS ultima FROM revistas_controle WHERE fonte = 'xml'`
+  );
+  const proxima = parseInt(result.rows[0].ultima, 10) + 1;
+  const numStr = String(proxima).padStart(4, '0');
 
-    console.log(`[CRON] RM${numStr} baixada (${count} processos). Iniciando importação...`);
-
-    const { importarRevista } = require('../scripts/importar');
+  const xmlPath = await baixarXmlReal(proxima);
+  if (xmlPath) {
     const importados = await importarRevista(xmlPath, proxima);
-    console.log(`[CRON] RM${numStr} importada: ${importados} registros.`);
-    invalidatePrefix('/stats');
-    invalidatePrefix('/classes');
-    invalidatePrefix('/titulares');
-    invalidatePrefix('/procuradores');
+    console.log(`[CRON] RM${numStr} importada via XML: ${importados} registros.`);
+    invalidarCachesDeRevista();
+    return;
+  }
+
+  let pdfPath;
+  try {
+    pdfPath = await baixarPdf(proxima);
+  } catch {
+    console.log(`[CRON] RM${numStr}: nem XML nem PDF disponíveis ainda.`);
+    return;
+  }
+
+  console.log(`[CRON] RM${numStr}: XML ainda não saiu, importando provisoriamente do PDF...`);
+  const jsonlPath = path.join(PDF_DATA_PATH, `Marcas${numStr}.jsonl`);
+  execFileSync('python3', [
+    path.join(__dirname, '../scripts/extrair-pdf.py'),
+    pdfPath,
+    '--revista', String(proxima),
+    '--out', jsonlPath,
+  ], { stdio: 'inherit' });
+  execFileSync('node', [path.join(__dirname, '../scripts/import-pdf.js'), jsonlPath, String(proxima)], {
+    stdio: 'inherit',
+  });
+  console.log(`[CRON] RM${numStr} importada provisoriamente do PDF.`);
+  invalidarCachesDeRevista();
+}
+
+// Cron: de hora em hora, promove revistas PDF->XML quando o XML sai e verifica
+// se há uma edição nova (XML preferencial, PDF como provisório).
+let cronEmExecucao = false;
+cron.schedule('0 * * * *', async () => {
+  if (cronEmExecucao) {
+    console.log('[CRON] Execução anterior ainda em andamento, pulando esta.');
+    return;
+  }
+  cronEmExecucao = true;
+  console.log('[CRON] Verificando nova edição do INPI...');
+  try {
+    await promoverRevistasPdfParaXml();
+    await importarProximaEdicao();
   } catch (err) {
     console.error('[CRON] Erro:', err.message);
+  } finally {
+    cronEmExecucao = false;
   }
 });
 
