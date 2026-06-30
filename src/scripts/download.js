@@ -127,21 +127,30 @@ async function main() {
     fs.mkdirSync(DATA_PATH, { recursive: true });
   }
 
-  // Se um número específico for passado como argumento, força re-download só dele
+  // Se um número específico for passado como argumento, baixa só aquela e sai
   const forceNumero = process.argv[2] ? parseInt(process.argv[2], 10) : null;
   if (forceNumero) {
     const numStr = formatNumero(forceNumero);
-    // Remove do disco para forçar novo download
     const xmlPath = path.join(DATA_PATH, `RM${numStr}.xml`);
     const txtPath = path.join(DATA_PATH, `RM${numStr}.txt`);
     if (fs.existsSync(xmlPath)) fs.unlinkSync(xmlPath);
     if (fs.existsSync(txtPath)) fs.unlinkSync(txtPath);
-    // Reseta no banco para aparecer como pendente
-    await pool.query(
-      `UPDATE revistas_controle SET baixado = FALSE, importado = FALSE WHERE numero_revista = $1`,
-      [forceNumero]
-    );
-    console.log(`Forçando re-download da RM${numStr}...`);
+    process.stdout.write(`Baixando RM${numStr}... `);
+    try {
+      const count = await downloadRevista(forceNumero);
+      if (count === null) {
+        console.log('não encontrada (404).');
+      } else {
+        await marcarBaixada(forceNumero, count);
+        console.log(`OK (${count} processos)`);
+      }
+    } catch (err) {
+      console.log(`ERRO: ${err.message}`);
+      await pool.end();
+      process.exit(1);
+    }
+    await pool.end();
+    return;
   }
 
   const jaBaixadas = await getRevistasJaBaixadas();
