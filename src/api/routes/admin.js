@@ -66,13 +66,16 @@ function runProcess(cmd, args, sse) {
   });
 }
 
-// Importar via XML (download.js já cuida de tudo)
+// Importar via XML: download + import
 router.get('/stream/xml/:revista', async (req, res) => {
   const num = req.params.revista;
   const sse = sseStream(res);
-  sse.log(`Iniciando importação XML da RM${num}...\n`);
-  const ok = await runProcess('node', ['src/scripts/download.js', num], sse);
-  sse.done(ok);
+  sse.log(`[1/2] Baixando XML da RM${num}...\n`);
+  const dlOk = await runProcess('node', ['src/scripts/download.js', num], sse);
+  if (!dlOk) return sse.done(false);
+  sse.log(`\n[2/2] Importando no banco de dados...\n`);
+  const impOk = await runProcess('node', ['src/scripts/import.js'], sse);
+  sse.done(impOk);
 });
 
 // Importar via PDF: 3 passos sequenciais
