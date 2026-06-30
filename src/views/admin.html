@@ -3,195 +3,678 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin — INPI Monitor</title>
+  <title>INPI Monitor — Admin</title>
   <style>
+    :root {
+      --bg: #080c14;
+      --surface: #0d1526;
+      --surface2: #111e36;
+      --border: #1e2d4a;
+      --border2: #243555;
+      --accent: #3b82f6;
+      --accent-dim: #1d4ed8;
+      --green: #10b981;
+      --green-dim: #064e3b;
+      --yellow: #f59e0b;
+      --yellow-dim: #451a03;
+      --red: #ef4444;
+      --red-dim: #450a0a;
+      --text: #e2e8f0;
+      --text-muted: #64748b;
+      --text-dim: #94a3b8;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
 
+    /* ── HEADER ── */
     header {
-      background: #161b22; border-bottom: 1px solid #30363d;
-      padding: 14px 24px; display: flex; align-items: center; gap: 10px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
     }
-    header h1 { font-size: 17px; font-weight: 600; color: #58a6ff; }
-    header span { font-size: 13px; color: #8b949e; }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, #3b82f6, #6366f1);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .logo-text { font-size: 15px; font-weight: 700; letter-spacing: -.3px; }
+    .logo-text span { color: var(--accent); }
+    .header-badge {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
 
-    main { max-width: 820px; margin: 28px auto; padding: 0 20px; }
+    /* ── LAYOUT ── */
+    main {
+      flex: 1;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 32px 24px;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 24px;
+      align-items: start;
+    }
+    .left { display: flex; flex-direction: column; gap: 20px; }
+    .right { display: flex; flex-direction: column; gap: 20px; }
 
+    /* ── CARDS ── */
     .card {
-      background: #161b22; border: 1px solid #30363d;
-      border-radius: 8px; padding: 22px; margin-bottom: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
     }
-    .card h2 { font-size: 14px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 16px; }
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .card-body { padding: 20px; }
 
-    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    /* ── STATS ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+    }
+    .stat {
+      background: var(--surface);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .stat-value {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -.5px;
+      color: var(--text);
+    }
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .stat-icon {
+      font-size: 20px;
+      margin-bottom: 4px;
+    }
 
+    /* ── IMPORT FORM ── */
+    .import-row {
+      display: flex;
+      gap: 10px;
+      align-items: stretch;
+    }
+    .input-wrap {
+      position: relative;
+      flex: 1;
+    }
+    .input-prefix {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 600;
+      pointer-events: none;
+    }
     input[type=number] {
-      background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
-      color: #e6edf3; padding: 9px 13px; font-size: 15px; width: 130px; outline: none;
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 11px 14px 11px 40px;
+      font-size: 16px;
+      font-weight: 600;
+      outline: none;
+      transition: border-color .2s;
+      -moz-appearance: textfield;
     }
-    input[type=number]:focus { border-color: #58a6ff; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    input[type=number]:focus { border-color: var(--accent); }
 
     button {
-      border: none; border-radius: 6px; padding: 9px 16px; font-size: 14px;
-      font-weight: 500; cursor: pointer; transition: opacity .15s;
+      border: none;
+      border-radius: 8px;
+      padding: 11px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
     }
-    button:hover:not(:disabled) { opacity: .82; }
-    button:disabled { opacity: .35; cursor: not-allowed; }
-    .btn-check   { background: #1f6feb; color: #fff; }
-    .btn-xml     { background: #238636; color: #fff; }
-    .btn-pdf     { background: #9a3412; color: #fff; }
+    button:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
+    button:active:not(:disabled) { transform: translateY(0); }
+    button:disabled { opacity: .35; cursor: not-allowed; transform: none; }
 
-    .alert {
-      margin-top: 16px; padding: 13px 16px; border-radius: 6px;
-      font-size: 14px; line-height: 1.5; display: none;
+    .btn-check  { background: var(--accent); color: #fff; }
+    .btn-xml    { background: var(--green); color: #fff; }
+    .btn-pdf    { background: #f97316; color: #fff; }
+    .btn-sm     { padding: 7px 14px; font-size: 12px; }
+
+    /* ── AVAILABILITY RESULT ── */
+    .avail {
+      display: none;
+      margin-top: 16px;
+      border-radius: 10px;
+      overflow: hidden;
     }
-    .alert.show { display: block; }
-    .alert-xml  { background: #0f3324; border: 1px solid #238636; color: #3fb950; }
-    .alert-pdf  { background: #2d1b00; border: 1px solid #d29922; color: #e3b341; }
-    .alert-err  { background: #1c1c2e; border: 1px solid #8b949e;  color: #8b949e;  }
+    .avail.show { display: block; }
+    .avail-inner {
+      padding: 16px 18px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .avail-xml  { background: #052e16; border: 1px solid #166534; }
+    .avail-only-pdf { background: #431407; border: 1px solid #9a3412; }
+    .avail-err  { background: #1e1b4b; border: 1px solid #312e81; }
 
-    .actions { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .avail-info { flex: 1; }
+    .avail-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+    .avail-xml .avail-title  { color: #4ade80; }
+    .avail-only-pdf .avail-title { color: #fb923c; }
+    .avail-err .avail-title  { color: #a5b4fc; }
+    .avail-desc { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 
-    /* Log */
-    .log-wrap { display: none; }
-    .log-wrap.show { display: block; }
-    .log-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .log-top h2 { font-size: 14px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: .05em; }
+    /* ── STEPS ── */
+    .steps {
+      display: none;
+      margin-top: 20px;
+    }
+    .steps.show { display: flex; align-items: center; gap: 0; }
+    .step {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      position: relative;
+    }
+    .step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      width: 100%;
+      height: 2px;
+      background: var(--border);
+      z-index: 0;
+    }
+    .step:not(:last-child).done::after { background: var(--green); }
+    .step:not(:last-child).running::after { background: var(--accent); }
 
-    .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
-    .badge-run  { background: #1f4a8a; color: #58a6ff; }
-    .badge-ok   { background: #0f3324; color: #3fb950; }
-    .badge-err  { background: #3c1a1a; color: #f85149; }
+    .step-circle {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700;
+      position: relative; z-index: 1;
+      transition: all .3s;
+      color: var(--text-muted);
+    }
+    .step.done .step-circle    { background: var(--green); border-color: var(--green); color: #fff; }
+    .step.running .step-circle { background: var(--accent); border-color: var(--accent); color: #fff; animation: pulse 1.5s ease-in-out infinite; }
+    .step.error .step-circle   { background: var(--red); border-color: var(--red); color: #fff; }
+    .step-label { font-size: 11px; color: var(--text-muted); font-weight: 500; text-align: center; }
+    .step.done .step-label    { color: var(--green); }
+    .step.running .step-label { color: var(--accent); }
+    .step.error .step-label   { color: var(--red); }
 
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,.4); }
+      50%       { box-shadow: 0 0 0 6px rgba(59,130,246,0); }
+    }
+
+    /* ── TERMINAL ── */
+    .terminal-wrap { display: none; margin-top: 20px; }
+    .terminal-wrap.show { display: block; }
+    .terminal-top {
+      background: #1a1a2e;
+      border: 1px solid var(--border);
+      border-bottom: none;
+      border-radius: 10px 10px 0 0;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .terminal-dots { display: flex; gap: 6px; }
+    .terminal-dots span {
+      width: 12px; height: 12px; border-radius: 50%;
+    }
+    .d1 { background: #ff5f57; }
+    .d2 { background: #ffbd2e; }
+    .d3 { background: #28c840; }
+    .terminal-title { font-size: 12px; color: var(--text-muted); flex: 1; text-align: center; margin-right: 40px; }
     #log {
-      background: #010409; border: 1px solid #21262d; border-radius: 6px;
-      padding: 14px 16px; font-family: 'Courier New', Courier, monospace; font-size: 13px;
-      color: #7ee787; height: 380px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+      background: #0a0a0f;
+      border: 1px solid var(--border);
+      border-radius: 0 0 10px 10px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+      font-size: 12.5px;
+      color: #a8ff78;
+      height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.6;
     }
+    #log::-webkit-scrollbar { width: 6px; }
+    #log::-webkit-scrollbar-track { background: transparent; }
+    #log::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
 
-    .spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid #58a6ff44; border-top-color: #58a6ff; border-radius: 50%; animation: spin .7s linear infinite; margin-right: 6px; vertical-align: middle; }
+    /* ── STATUS BADGE ── */
+    .run-status {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .run-status.show { display: flex; }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+    }
+    .status-running .status-dot { background: var(--accent); animation: blink 1s ease-in-out infinite; }
+    .status-ok .status-dot      { background: var(--green); }
+    .status-err .status-dot     { background: var(--red); }
+    .status-running { color: var(--accent); }
+    .status-ok      { color: var(--green); }
+    .status-err     { color: var(--red); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ── RIGHT PANEL ── */
+    .info-list { display: flex; flex-direction: column; gap: 12px; }
+    .info-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .info-key { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+    .info-val { font-size: 13px; font-weight: 700; color: var(--text); }
+    .info-val.green { color: var(--green); }
+    .info-val.yellow { color: var(--yellow); }
+
+    .tip-list { display: flex; flex-direction: column; gap: 8px; }
+    .tip {
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.5;
+      border-left: 3px solid;
+    }
+    .tip-warn { background: #1c1004; border-color: var(--yellow); color: #fde68a; }
+    .tip-info { background: #0a1628; border-color: var(--accent); color: #93c5fd; }
+    .tip strong { display: block; margin-bottom: 2px; }
+
+    /* ── SPINNER ── */
+    .spin {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 768px) {
+      main { grid-template-columns: 1fr; }
+      .right { order: -1; }
+      .stats-grid { grid-template-columns: repeat(3, 1fr); }
+    }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>INPI Monitor</h1>
-  <span>/ Painel de Importação</span>
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <div class="logo-text">INPI<span>Monitor</span></div>
+  </div>
+  <div class="header-badge">Painel Admin</div>
 </header>
 
 <main>
-  <div class="card">
-    <h2>Importar Revista</h2>
-    <div class="row">
-      <input type="number" id="revista" placeholder="ex: 2895" min="1" max="9999">
-      <button class="btn-check" id="btn-verificar" onclick="verificar()">Verificar disponibilidade</button>
-    </div>
+  <!-- COLUNA ESQUERDA -->
+  <div class="left">
 
-    <div id="alert-xml" class="alert alert-xml">
-      <strong>✓ XML disponível</strong> — importação completa e sem perdas
-      <div class="actions">
-        <button class="btn-xml" onclick="importar('xml')">Importar via XML</button>
+    <!-- Stats -->
+    <div class="card">
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat">
+          <div class="stat-icon">📦</div>
+          <div class="stat-value" id="stat-total">—</div>
+          <div class="stat-label">Total de marcas</div>
+        </div>
+        <div class="stat">
+          <div class="stat-icon">📰</div>
+          <div class="stat-value" id="stat-revistas">—</div>
+          <div class="stat-label">Revistas importadas</div>
+        </div>
+        <div class="stat">
+          <div class="stat-icon">🔖</div>
+          <div class="stat-value" id="stat-ultima">—</div>
+          <div class="stat-label">Última revista</div>
+        </div>
       </div>
     </div>
 
-    <div id="alert-pdf" class="alert alert-pdf">
-      <strong>⚠ XML ainda não publicado</strong> — apenas o PDF está disponível.<br>
-      <small>Importação provisória (pode perder registros). O cron substitui pelo XML quando ele sair.</small>
-      <div class="actions">
-        <button class="btn-pdf" onclick="importar('pdf')">Importar via PDF (provisório)</button>
+    <!-- Import -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="dot"></span>Importar Revista</div>
+        <div class="run-status" id="run-status">
+          <div class="status-dot"></div>
+          <span id="run-status-text">Rodando...</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="import-row">
+          <div class="input-wrap">
+            <span class="input-prefix">RM</span>
+            <input type="number" id="revista" placeholder="2895" min="1" max="9999">
+          </div>
+          <button class="btn-check" id="btn-check" onclick="verificar()">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            Verificar
+          </button>
+        </div>
+
+        <!-- Resultado disponibilidade -->
+        <div class="avail avail-xml" id="avail-xml">
+          <div class="avail-inner">
+            <div class="avail-info">
+              <div class="avail-title">✓ XML disponível</div>
+              <div class="avail-desc">Importação completa e sem perdas. Recomendado.</div>
+            </div>
+            <button class="btn-xml btn-sm" onclick="importar('xml')">Importar via XML</button>
+          </div>
+        </div>
+
+        <div class="avail avail-only-pdf" id="avail-pdf">
+          <div class="avail-inner">
+            <div class="avail-info">
+              <div class="avail-title">⚠ Só PDF disponível</div>
+              <div class="avail-desc">Importação provisória. O cron substitui pelo XML quando ele sair.</div>
+            </div>
+            <button class="btn-pdf btn-sm" onclick="importar('pdf')">Importar via PDF</button>
+          </div>
+        </div>
+
+        <div class="avail avail-err" id="avail-err">
+          <div class="avail-inner">
+            <div class="avail-info">
+              <div class="avail-title">✗ Servidor INPI indisponível</div>
+              <div class="avail-desc">revistas.inpi.gov.br pode estar fora do ar. Tente novamente em alguns minutos.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Steps (só PDF) -->
+        <div class="steps" id="steps">
+          <div class="step" id="step-1">
+            <div class="step-circle">1</div>
+            <div class="step-label">Download</div>
+          </div>
+          <div class="step" id="step-2">
+            <div class="step-circle">2</div>
+            <div class="step-label">Extração</div>
+          </div>
+          <div class="step" id="step-3">
+            <div class="step-circle">3</div>
+            <div class="step-label">Importação</div>
+          </div>
+        </div>
+
+        <!-- Terminal -->
+        <div class="terminal-wrap" id="terminal-wrap">
+          <div class="terminal-top">
+            <div class="terminal-dots">
+              <span class="d1"></span><span class="d2"></span><span class="d3"></span>
+            </div>
+            <div class="terminal-title" id="terminal-title">bash</div>
+          </div>
+          <div id="log"></div>
+        </div>
       </div>
     </div>
 
-    <div id="alert-err" class="alert alert-err">
-      <strong>✗ Não foi possível verificar.</strong> O servidor do INPI pode estar fora do ar.
-    </div>
   </div>
 
-  <div class="card log-wrap" id="log-card">
-    <div class="log-top">
-      <h2>Log de execução</h2>
-      <span id="badge" class="badge badge-run"><span class="spinner"></span>Rodando...</span>
+  <!-- COLUNA DIREITA -->
+  <div class="right">
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="dot"></span>Status do banco</div>
+      </div>
+      <div class="card-body">
+        <div class="info-list" id="db-info">
+          <div class="info-item">
+            <span class="info-key">Última XML importada</span>
+            <span class="info-val green" id="db-ultima-xml">—</span>
+          </div>
+          <div class="info-item">
+            <span class="info-key">Revistas em PDF (provisório)</span>
+            <span class="info-val yellow" id="db-pdf-count">—</span>
+          </div>
+          <div class="info-item">
+            <span class="info-key">Total de marcas</span>
+            <span class="info-val" id="db-total">—</span>
+          </div>
+        </div>
+      </div>
     </div>
-    <div id="log"></div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="dot" style="background:#f59e0b"></span>Lembretes</div>
+      </div>
+      <div class="card-body">
+        <div class="tip-list">
+          <div class="tip tip-warn">
+            <strong>PDF é provisório</strong>
+            Pode perder até 45% dos registros. O cron converte para XML automaticamente quando ele sair.
+          </div>
+          <div class="tip tip-info">
+            <strong>Verificar magic bytes</strong>
+            O INPI retorna HTTP 200 para revistas inexistentes. A verificação checa os bytes PK do ZIP.
+          </div>
+          <div class="tip tip-info">
+            <strong>Cron ativo</strong>
+            Roda a cada hora: verifica nova edição e promove PDF→XML automaticamente.
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </main>
 
 <script>
   let currentRevista = null;
   let activeSource = null;
+  let currentTipo = null;
 
-  function getNum() {
-    const v = parseInt(document.getElementById('revista').value);
-    if (!v || v < 1) { alert('Digite um número de revista válido.'); return null; }
-    return v;
+  // Carrega stats ao abrir
+  async function loadStats() {
+    try {
+      const res = await fetch('/status');
+      const d = await res.json();
+      document.getElementById('stat-total').textContent = (d.total_marcas || 0).toLocaleString('pt-BR');
+      document.getElementById('stat-revistas').textContent = (d.revistas_importadas || 0).toLocaleString('pt-BR');
+      document.getElementById('stat-ultima').textContent = d.ultima_revista ? `RM${d.ultima_revista}` : '—';
+      document.getElementById('db-ultima-xml').textContent = d.ultima_revista_xml ? `RM${d.ultima_revista_xml}` : '—';
+      document.getElementById('db-pdf-count').textContent = d.revistas_pdf_pendentes ?? '—';
+      document.getElementById('db-total').textContent = (d.total_marcas || 0).toLocaleString('pt-BR');
+    } catch { /* silencia erros de stats */ }
   }
 
+  loadStats();
+
   function hideAlerts() {
-    ['alert-xml', 'alert-pdf', 'alert-err'].forEach(id => {
+    ['avail-xml','avail-pdf','avail-err'].forEach(id => {
       document.getElementById(id).classList.remove('show');
     });
   }
 
+  function setRunStatus(state, text) {
+    const el = document.getElementById('run-status');
+    const txt = document.getElementById('run-status-text');
+    el.className = 'run-status show status-' + state;
+    txt.textContent = text;
+  }
+
   async function verificar() {
-    const r = getNum();
-    if (!r) return;
-    currentRevista = r;
+    const v = parseInt(document.getElementById('revista').value);
+    if (!v || v < 1) { alert('Digite um número de revista válido.'); return; }
+    currentRevista = v;
     hideAlerts();
 
-    const btn = document.getElementById('btn-verificar');
+    const btn = document.getElementById('btn-check');
     btn.disabled = true;
-    btn.textContent = 'Verificando...';
+    btn.innerHTML = '<div class="spin"></div> Verificando...';
 
     try {
-      const res = await fetch(`/admin/check/${r}`);
+      const res = await fetch(`/admin/check/${v}`);
       const { xml, error } = await res.json();
       if (error) {
-        document.getElementById('alert-err').classList.add('show');
+        document.getElementById('avail-err').classList.add('show');
       } else if (xml) {
-        document.getElementById('alert-xml').classList.add('show');
+        document.getElementById('avail-xml').classList.add('show');
       } else {
-        document.getElementById('alert-pdf').classList.add('show');
+        document.getElementById('avail-pdf').classList.add('show');
       }
     } catch {
-      document.getElementById('alert-err').classList.add('show');
+      document.getElementById('avail-err').classList.add('show');
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Verificar disponibilidade';
+      btn.innerHTML = `<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg> Verificar`;
     }
   }
 
+  function setStep(n, state) {
+    for (let i = 1; i <= 3; i++) {
+      const el = document.getElementById(`step-${i}`);
+      el.classList.remove('done','running','error');
+      if (i < n) el.classList.add('done');
+      else if (i === n) el.classList.add(state);
+    }
+  }
+
+  function detectStep(text) {
+    if (text.includes('[1/3]')) setStep(1, 'running');
+    if (text.includes('[2/3]')) { setStep(1, 'done'); setStep(2, 'running'); }
+    if (text.includes('[3/3]')) { setStep(1, 'done'); setStep(2, 'done'); setStep(3, 'running'); }
+  }
+
   function importar(tipo) {
-    const r = currentRevista || getNum();
+    const r = currentRevista;
     if (!r) return;
+    currentTipo = tipo;
 
     if (activeSource) activeSource.close();
 
     const logEl = document.getElementById('log');
-    const badge = document.getElementById('badge');
-    const card = document.getElementById('log-card');
+    const termWrap = document.getElementById('terminal-wrap');
+    const steps = document.getElementById('steps');
+    const title = document.getElementById('terminal-title');
 
     logEl.textContent = '';
-    badge.className = 'badge badge-run';
-    badge.innerHTML = '<span class="spinner"></span>Rodando...';
-    card.classList.add('show');
+    termWrap.classList.add('show');
+    title.textContent = tipo === 'xml' ? `download.js ${r}` : `import-pdf.js — RM${String(r).padStart(4,'0')}`;
+
+    if (tipo === 'pdf') {
+      steps.classList.add('show');
+      setStep(1, 'running');
+    } else {
+      steps.classList.remove('show');
+    }
+
+    setRunStatus('running', 'Rodando...');
 
     activeSource = new EventSource(`/admin/stream/${tipo}/${r}`);
 
     activeSource.onmessage = (e) => {
       const { type, text, ok } = JSON.parse(e.data);
       if (type === 'log') {
+        if (tipo === 'pdf') detectStep(text);
         logEl.textContent += text;
         logEl.scrollTop = logEl.scrollHeight;
       } else if (type === 'done') {
         activeSource.close();
         activeSource = null;
+        if (tipo === 'pdf') {
+          if (ok) { setStep(1,'done'); setStep(2,'done'); setStep(3,'done'); }
+          else {
+            const running = document.querySelector('.step.running');
+            if (running) running.classList.replace('running', 'error');
+          }
+        }
         if (ok) {
-          badge.className = 'badge badge-ok';
-          badge.textContent = 'Concluído ✓';
+          setRunStatus('ok', 'Concluído com sucesso');
+          loadStats();
         } else {
-          badge.className = 'badge badge-err';
-          badge.textContent = 'Erro ✗';
+          setRunStatus('err', 'Falha na importação');
         }
       }
     };
@@ -199,10 +682,14 @@
     activeSource.onerror = () => {
       if (activeSource) activeSource.close();
       activeSource = null;
-      badge.className = 'badge badge-err';
-      badge.textContent = 'Conexão perdida ✗';
+      setRunStatus('err', 'Conexão perdida');
     };
   }
+
+  // Enter no input dispara verificação
+  document.getElementById('revista').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') verificar();
+  });
 </script>
 </body>
 </html>
