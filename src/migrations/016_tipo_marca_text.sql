@@ -1,0 +1,1 @@
+ALTER TABLE marcas ALTER COLUMN tipo_marca TYPE TEXT;

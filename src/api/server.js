@@ -13,6 +13,7 @@ const { baixarPdf } = require('../scripts/download-pdf');
 const { globalLimiter, searchLimiter } = require('./middleware/rateLimit');
 const { invalidatePrefix } = require('./middleware/cache');
 const apiKeyMiddleware    = require('./middleware/apiKey');
+const adminRouter        = require('./routes/admin');
 const marcasRouter       = require('./routes/marcas');
 const statusRouter       = require('./routes/status');
 const statsRouter        = require('./routes/stats');
@@ -47,6 +48,7 @@ app.use(cors(allowedOrigins
 app.use(express.json());
 app.set('trust proxy', 1);
 app.use(globalLimiter);
+app.use('/admin',        adminRouter);
 app.use(apiKeyMiddleware);
 
 app.use('/marcas',       marcasRouter);
